@@ -1,0 +1,20 @@
+[package]
+name = "gestion-finance-egd"
+version = "1.0.0"
+description = "Gestion financière de l'Église Gloire de Dieu - Paroisse de Kyeshero"
+authors = ["Église Gloire de Dieu"]
+edition = "2021"
+
+[lib]
+name = "gestion_finance_egd_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
