@@ -107,7 +107,7 @@ export function Home({ config, onLogin }: HomeProps) {
         </div>
 
         <p className="text-center text-emerald-400/50 text-xs mt-8">
-          Système de gestion financière — Franc Congolais (FC)
+          Système de gestion financière — CDF & USD
         </p>
       </div>
     </div>

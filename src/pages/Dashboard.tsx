@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import type { Config, Categorie } from '@/types';
 import { useFinance } from '@/hooks/useFinance';
-import { formatFC, MONTH_NAMES_SHORT, getMonthRange, getYearRange } from '@/utils/format';
+import { formatCurrency, MONTH_NAMES_SHORT, getYearRange, type Currency } from '@/utils/format';
 import { generateRecuReversement } from '@/services/pdf';
 import type { Reversement } from '@/types';
 
@@ -122,7 +122,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
     if (result) {
       const label = type === 'communaute' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)';
       generateRecuReversement(config, result, label);
-      setSuccessMsg(`Reversement de ${formatFC(montant)} enregistré. Reçu PDF téléchargé.`);
+      setSuccessMsg(`Reversement de ${formatCurrency(montant, config.devise as Currency)} enregistré. Reçu PDF téléchargé.`);
       setShowConfirm(null);
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
@@ -171,7 +171,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
             )}
           </div>
           <p className="text-sm text-gray-500">Entrées du mois</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">{formatFC(entreesMois)}</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(entreesMois, config.devise as Currency)}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -181,7 +181,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
             </div>
           </div>
           <p className="text-sm text-gray-500">Sorties du mois</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">{formatFC(sortiesMois)}</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(sortiesMois, config.devise as Currency)}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -191,7 +191,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
             </div>
           </div>
           <p className="text-sm text-gray-500">Solde net en caisse</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">{formatFC(soldeNet)}</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(soldeNet, config.devise as Currency)}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -201,7 +201,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
             </div>
           </div>
           <p className="text-sm text-gray-500">Total global des entrées</p>
-          <p className="text-xl font-bold text-gray-800 mt-1">{formatFC(totalGlobal)}</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(totalGlobal, config.devise as Currency)}</p>
         </div>
       </div>
 
@@ -223,14 +223,14 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
                 <tr key={i} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
                   <td className="px-5 py-3 text-sm text-gray-700">{cat.nom}</td>
                   <td className="px-5 py-3 text-sm text-right font-semibold text-gray-800">
-                    {formatFC(cat.montant)}
+                    {formatCurrency(cat.montant, config.devise as Currency)}
                   </td>
                 </tr>
               ))}
               <tr className="border-t-2 border-gray-200 bg-gray-50">
                 <td className="px-5 py-3 text-sm font-bold text-gray-800">Total Global</td>
                 <td className="px-5 py-3 text-sm text-right font-bold text-emerald-700">
-                  {formatFC(totalGlobal)}
+                  {formatCurrency(totalGlobal, config.devise as Currency)}
                 </td>
               </tr>
             </tbody>
@@ -250,7 +250,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
               <p className="text-xs text-gray-500">20% (Dîmes + Offrandes Ord. + Actions de Grâce + Évangélisation)</p>
             </div>
           </div>
-          <p className="text-2xl font-bold text-teal-700 mb-4">{formatFC(totalCommunaute)}</p>
+          <p className="text-2xl font-bold text-teal-700 mb-4">{formatCurrency(totalCommunaute, config.devise as Currency)}</p>
           <button
             onClick={() => setShowConfirm('communaute')}
             disabled={totalCommunaute <= 0}
@@ -270,7 +270,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
               <p className="text-xs text-gray-500">10% des Dîmes uniquement</p>
             </div>
           </div>
-          <p className="text-2xl font-bold text-amber-700 mb-4">{formatFC(totalApotre)}</p>
+          <p className="text-2xl font-bold text-amber-700 mb-4">{formatCurrency(totalApotre, config.devise as Currency)}</p>
           <button
             onClick={() => setShowConfirm('apotre')}
             disabled={totalApotre <= 0}
@@ -290,7 +290,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v) => formatFC(Number(v))} />
+              <Tooltip formatter={(v) => formatCurrency(Number(v), config.devise as Currency)} />
               <Legend />
               <Line type="monotone" dataKey="entrees" stroke="#16a34a" strokeWidth={2} name="Recettes" dot={{ r: 3 }} />
               <Line type="monotone" dataKey="sorties" stroke="#dc2626" strokeWidth={2} name="Dépenses" dot={{ r: 3 }} />
@@ -308,7 +308,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => formatFC(Number(v))} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v), config.devise as Currency)} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -375,8 +375,8 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
               <h3 className="text-lg font-bold text-gray-800">Confirmer le décaissement</h3>
               <p className="text-sm text-gray-500 mt-2">
                 {showConfirm === 'communaute'
-                  ? `Reverser ${formatFC(totalCommunaute)} à la Communauté Centrale (20%)`
-                  : `Reverser ${formatFC(totalApotre)} à l'Apôtre (10%)`}
+                  ? `Reverser ${formatCurrency(totalCommunaute, config.devise as Currency)} à la Communauté Centrale (20%)`
+                  : `Reverser ${formatCurrency(totalApotre, config.devise as Currency)} à l'Apôtre (10%)`}
               </p>
             </div>
             <div className="flex gap-3 mt-6">

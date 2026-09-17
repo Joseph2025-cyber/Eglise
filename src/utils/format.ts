@@ -1,5 +1,16 @@
+export type Currency = 'CDF' | 'USD';
+
+export function formatCurrency(amount: number, currency: Currency = 'CDF'): string {
+  const formatted = new Intl.NumberFormat('fr-FR').format(Math.round(amount));
+  return `${formatted} ${currency}`;
+}
+
 export function formatFC(amount: number): string {
-  return new Intl.NumberFormat('fr-FR').format(Math.round(amount)) + ' FC';
+  return formatCurrency(amount, 'CDF');
+}
+
+export function formatUSD(amount: number): string {
+  return formatCurrency(amount, 'USD');
 }
 
 export function formatNumber(amount: number): string {

@@ -5,7 +5,6 @@ import {
 import type { Config } from '@/types';
 import { useConfig } from '@/hooks/useConfig';
 import { useFinance } from '@/hooks/useFinance';
-import { query } from '@/lib/database';
 
 interface SettingsPageProps {
   config: Config;
@@ -18,6 +17,7 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
   const { getAllEntrees, getAllSorties, getAllReversements, deleteAllEntrees, deleteAllSorties, deleteAllReversements, archiveExercice } = useFinance();
   const [nomCommunaute, setNomCommunaute] = useState(config.nom_communaute);
   const [paroisse, setParoisse] = useState(config.paroisse);
+  const [devise, setDevise] = useState<'CDF' | 'USD'>(config.devise === 'USD' ? 'USD' : 'CDF');
   const [mdpAcces, setMdpAcces] = useState(config.mdp_acces);
   const [mdpSortie, setMdpSortie] = useState(config.mdp_sortie);
   const [saving, setSaving] = useState(false);
@@ -32,6 +32,7 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
     const { error: err } = await updateConfig({
       nom_communaute: nomCommunaute,
       paroisse,
+      devise,
       mdp_acces: mdpAcces,
       mdp_sortie: mdpSortie,
     });
@@ -137,12 +138,30 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
 
         <div>
           <label className="text-sm font-medium text-gray-700 mb-2 block">Devise</label>
-          <input
-            type="text"
-            value="Franc Congolais (FC)"
-            disabled
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 cursor-not-allowed"
-          />
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setDevise('CDF')}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all ${
+                devise === 'CDF'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              } border`}
+            >
+              Franc Congolais (CDF)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDevise('USD')}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all ${
+                devise === 'USD'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              } border`}
+            >
+              Dollar Américain (USD)
+            </button>
+          </div>
         </div>
 
         <div>

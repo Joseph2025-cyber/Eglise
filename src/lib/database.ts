@@ -10,24 +10,13 @@ function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
 }
 
-async function getDbPath(): Promise<string> {
-  if (isTauri()) {
-    try {
-      const { appDataDir } = await import('@tauri-apps/api/path');
-      const dir = await appDataDir();
-      return `${dir}/church_finance.sqlite`;
-    } catch {
-      return DB_KEY;
-    }
-  }
-  return DB_KEY;
-}
-
 async function loadFromStorage(): Promise<Uint8Array | null> {
   if (isTauri()) {
     try {
       const { readFile } = await import('@tauri-apps/plugin-fs');
-      const path = await getDbPath();
+      const { appDataDir } = await import('@tauri-apps/api/path');
+      const dir = await appDataDir();
+      const path = `${dir}/church_finance.sqlite`;
       const data = await readFile(path);
       return new Uint8Array(data);
     } catch {
@@ -61,7 +50,11 @@ async function saveToStorage(data: Uint8Array): Promise<void> {
   for (let i = 0; i < data.length; i += chunk) {
     binary += String.fromCharCode(...data.subarray(i, i + chunk));
   }
-  localStorage.setItem(DB_KEY, btoa(binary));
+  try {
+    localStorage.setItem(DB_KEY, btoa(binary));
+  } catch (err) {
+    console.error('Failed to persist DB to localStorage:', err);
+  }
 }
 
 export async function getDb(): Promise<Database> {
@@ -75,11 +68,14 @@ export async function getDb(): Promise<Database> {
     const existing = await loadFromStorage();
     db = existing ? new SQL.Database(existing) : new SQL.Database();
 
+    db.run('PRAGMA foreign_keys = ON;');
+
     if (!existing) {
       db.run(SCHEMA_SQL);
       await persist();
     } else {
-      db.run('PRAGMA foreign_keys = ON;');
+      db.run(`UPDATE config SET devise = 'CDF' WHERE devise = 'FC' OR devise IS NULL;`);
+      await persist();
     }
 
     return db;
@@ -94,13 +90,21 @@ export async function persist(): Promise<void> {
   await saveToStorage(data);
 }
 
+function bindParams(stmt: import('sql.js').Statement, params: unknown[]): void {
+  stmt.bind(params.map((p) => {
+    if (p === null || p === undefined) return null;
+    if (typeof p === 'number') return p;
+    return String(p);
+  }) as never[]);
+}
+
 export async function query<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
   const database = await getDb();
   const stmt = database.prepare(sql);
-  stmt.bind(params as never[]);
+  bindParams(stmt, params);
   const results: T[] = [];
   while (stmt.step()) {
     results.push(stmt.getAsObject() as T);
@@ -119,7 +123,10 @@ export async function queryOne<T = Record<string, unknown>>(
 
 export async function execute(sql: string, params: unknown[] = []): Promise<number> {
   const database = await getDb();
-  database.run(sql, params as never[]);
+  const stmt = database.prepare(sql);
+  bindParams(stmt, params);
+  stmt.step();
+  stmt.free();
   await persist();
   const result = database.exec('SELECT last_insert_rowid() as id');
   return result.length > 0 ? (result[0].values[0][0] as number) : 0;
@@ -128,7 +135,10 @@ export async function execute(sql: string, params: unknown[] = []): Promise<numb
 export async function executeMany(sql: string, paramsList: unknown[][] = []): Promise<void> {
   const database = await getDb();
   for (const params of paramsList) {
-    database.run(sql, params as never[]);
+    const stmt = database.prepare(sql);
+    bindParams(stmt, params);
+    stmt.step();
+    stmt.free();
   }
   await persist();
 }

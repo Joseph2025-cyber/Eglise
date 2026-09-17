@@ -3,7 +3,7 @@ import { ArrowLeft, Save, X, Calendar, Tag, DollarSign, FileText, CheckCircle2 }
 import type { Config, Categorie } from '@/types';
 import { CULTE_OPTIONS } from '@/types';
 import { useFinance } from '@/hooks/useFinance';
-import { todayISO, formatFC } from '@/utils/format';
+import { todayISO, formatCurrency, type Currency } from '@/utils/format';
 import { generateRecuEntree } from '@/services/pdf';
 
 interface EntryFormProps {
@@ -117,7 +117,7 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
 
         <div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant (FC)
+            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant ({config.devise})
           </label>
           <input
             type="number"
@@ -127,7 +127,7 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-lg font-semibold"
           />
           {montant && parseInt(montant, 10) > 0 && (
-            <p className="text-sm text-emerald-600 mt-1 font-medium">{formatFC(parseInt(montant, 10))}</p>
+            <p className="text-sm text-emerald-600 mt-1 font-medium">{formatCurrency(parseInt(montant, 10), config.devise as Currency)}</p>
           )}
         </div>
 

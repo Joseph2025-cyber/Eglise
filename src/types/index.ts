@@ -2,7 +2,7 @@ export interface Config {
   id: number;
   nom_communaute: string;
   paroisse: string;
-  devise: string;
+  devise: 'CDF' | 'USD';
   mdp_acces: string;
   mdp_sortie: string;
   exercice_en_cours: number;

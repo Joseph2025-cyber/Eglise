@@ -1,7 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatFC, formatDateShort, formatDate, MONTH_NAMES } from '@/utils/format';
+import { formatCurrency, formatDateShort, formatDate, MONTH_NAMES, type Currency } from '@/utils/format';
 import type { EntreeWithCategorie, Sortie, Reversement, Config } from '@/types';
+
+function fmt(config: Config, amount: number): string {
+  return formatCurrency(amount, config.devise as Currency);
+}
 
 function header(doc: jsPDF, config: Config, subtitle: string) {
   doc.setFontSize(16);
@@ -49,7 +53,7 @@ export function generateRecuEntree(
     { label: 'Date', value: formatDateShort(entree.date) },
     { label: 'Culte / Service', value: entree.culte },
     { label: 'Catégorie', value: categorieNom },
-    { label: 'Montant', value: formatFC(entree.montant) },
+    { label: 'Montant', value: fmt(config, entree.montant) },
     { label: 'Note', value: entree.note || '—' },
   ];
 
@@ -79,7 +83,7 @@ export function generateRecuSortie(config: Config, sortie: Sortie) {
     { label: 'N° Reçu', value: `SORT-${sortie.id.toString().padStart(6, '0')}` },
     { label: 'Date', value: formatDateShort(sortie.date) },
     { label: 'Nature du décaissement', value: sortie.nature },
-    { label: 'Montant', value: formatFC(sortie.montant) },
+    { label: 'Montant', value: fmt(config, sortie.montant) },
     { label: 'Description', value: sortie.description || '—' },
     { label: 'Opérateur', value: sortie.nom_operateur },
     { label: 'Téléphone', value: sortie.telephone_operateur },
@@ -115,7 +119,7 @@ export function generateRecuReversement(
     { label: 'N° Reçu', value: `REV-${reversement.id.toString().padStart(6, '0')}` },
     { label: 'Type', value: label },
     { label: 'Date', value: formatDateShort(reversement.date_reversement) },
-    { label: 'Montant', value: formatFC(reversement.montant) },
+    { label: 'Montant', value: fmt(config, reversement.montant) },
     {
       label: 'Période',
       value:
@@ -180,10 +184,10 @@ export function generateReport(config: Config, data: ReportData) {
       formatDateShort(e.date),
       e.culte,
       e.categorie_nom || '—',
-      formatFC(e.montant),
+      fmt(config, e.montant),
       e.note || '—',
     ]),
-    foot: [['', '', 'Total Entrées', formatFC(data.totalEntrees), '']],
+    foot: [['', '', 'Total Entrées', fmt(config, data.totalEntrees), '']],
     theme: 'striped',
     headStyles: { fillColor: [22, 101, 52], fontSize: 9 },
     bodyStyles: { fontSize: 8 },
@@ -202,7 +206,7 @@ export function generateReport(config: Config, data: ReportData) {
   autoTable(doc, {
     startY: y,
     head: [['Catégorie', 'Montant']],
-    body: Array.from(parCategorie.entries()).map(([nom, montant]) => [nom, formatFC(montant)]),
+    body: Array.from(parCategorie.entries()).map(([nom, montant]) => [nom, fmt(config, montant)]),
     theme: 'striped',
     headStyles: { fillColor: [22, 101, 52], fontSize: 9 },
     bodyStyles: { fontSize: 9 },
@@ -223,11 +227,11 @@ export function generateReport(config: Config, data: ReportData) {
     body: data.sorties.map((s) => [
       formatDateShort(s.date),
       s.nature,
-      formatFC(s.montant),
+      fmt(config, s.montant),
       s.description || '—',
       `${s.nom_operateur} (${s.telephone_operateur})`,
     ]),
-    foot: [['', 'Total Sorties', formatFC(data.totalSorties), '', '']],
+    foot: [['', 'Total Sorties', fmt(config, data.totalSorties), '', '']],
     theme: 'striped',
     headStyles: { fillColor: [185, 28, 28], fontSize: 9 },
     bodyStyles: { fontSize: 8 },
@@ -250,12 +254,12 @@ export function generateReport(config: Config, data: ReportData) {
       body: data.reversements.map((r) => [
         formatDateShort(r.date_reversement),
         r.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)',
-        formatFC(r.montant),
+        fmt(config, r.montant),
         r.periode_debut && r.periode_fin
           ? `${formatDateShort(r.periode_debut)} - ${formatDateShort(r.periode_fin)}`
           : '—',
       ]),
-      foot: [['', 'Total Reversements', formatFC(data.totalReversements), '']],
+      foot: [['', 'Total Reversements', fmt(config, data.totalReversements), '']],
       theme: 'striped',
       headStyles: { fillColor: [180, 83, 9], fontSize: 9 },
       bodyStyles: { fontSize: 8 },
@@ -276,10 +280,10 @@ export function generateReport(config: Config, data: ReportData) {
     startY: y,
     head: [['Indicateur', 'Montant']],
     body: [
-      ['Total Entrées', formatFC(data.totalEntrees)],
-      ['Total Sorties', formatFC(data.totalSorties)],
-      ['Total Reversements', formatFC(data.totalReversements)],
-      ['Solde Net en Caisse', formatFC(data.solde)],
+      ['Total Entrées', fmt(config, data.totalEntrees)],
+      ['Total Sorties', fmt(config, data.totalSorties)],
+      ['Total Reversements', fmt(config, data.totalReversements)],
+      ['Solde Net en Caisse', fmt(config, data.solde)],
     ],
     theme: 'grid',
     headStyles: { fillColor: [30, 58, 95], fontSize: 10 },
