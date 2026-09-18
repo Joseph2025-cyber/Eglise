@@ -17,7 +17,7 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
   const { getAllEntrees, getAllSorties, getAllReversements, deleteAllEntrees, deleteAllSorties, deleteAllReversements, archiveExercice } = useFinance();
   const [nomCommunaute, setNomCommunaute] = useState(config.nom_communaute);
   const [paroisse, setParoisse] = useState(config.paroisse);
-  const [devise, setDevise] = useState<'CDF' | 'USD'>(config.devise === 'USD' ? 'USD' : 'CDF');
+  const [tauxUsdCdf, setTauxUsdCdf] = useState(String(config.taux_usd_cdf || 2800));
   const [mdpAcces, setMdpAcces] = useState(config.mdp_acces);
   const [mdpSortie, setMdpSortie] = useState(config.mdp_sortie);
   const [saving, setSaving] = useState(false);
@@ -29,10 +29,16 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
     e.preventDefault();
     setSaving(true);
     setError(null);
+    const taux = parseFloat(tauxUsdCdf);
+    if (!taux || taux <= 0) {
+      setError('Veuillez entrer un taux de change valide');
+      setSaving(false);
+      return;
+    }
     const { error: err } = await updateConfig({
       nom_communaute: nomCommunaute,
       paroisse,
-      devise,
+      taux_usd_cdf: taux,
       mdp_acces: mdpAcces,
       mdp_sortie: mdpSortie,
     });
@@ -54,9 +60,9 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
     const sorties = await getAllSorties();
     const reversements = await getAllReversements();
 
-    const totalEntrees = entrees.reduce((s, e) => s + e.montant, 0);
-    const totalSorties = sorties.reduce((s, s2) => s + s2.montant, 0);
-    const totalRev = reversements.reduce((s, r) => s + r.montant, 0);
+    const totalEntrees = entrees.reduce((s, e) => s + e.montant_cdf, 0);
+    const totalSorties = sorties.reduce((s, s2) => s + s2.montant_cdf, 0);
+    const totalRev = reversements.reduce((s, r) => s + r.montant_cdf, 0);
 
     await archiveExercice(
       year,
@@ -137,31 +143,19 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
         </div>
 
         <div>
-          <label className="text-sm font-medium text-gray-700 mb-2 block">Devise</label>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setDevise('CDF')}
-              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all ${
-                devise === 'CDF'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-              } border`}
-            >
-              Franc Congolais (CDF)
-            </button>
-            <button
-              type="button"
-              onClick={() => setDevise('USD')}
-              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all ${
-                devise === 'USD'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-              } border`}
-            >
-              Dollar Américain (USD)
-            </button>
-          </div>
+          <label className="text-sm font-medium text-gray-700 mb-2 block">
+            Taux de change (1 USD = ? CDF)
+          </label>
+          <input
+            type="number"
+            value={tauxUsdCdf}
+            onChange={(e) => setTauxUsdCdf(e.target.value)}
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-lg font-semibold"
+            placeholder="2800"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Ce taux est utilisé pour convertir les montants entre CDF et USD dans toute l'application.
+          </p>
         </div>
 
         <div>
@@ -216,7 +210,6 @@ export function SettingsPage({ config, onBack, onConfigChange }: SettingsPagePro
         </button>
       </form>
 
-      {/* New fiscal year */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mt-4">
         <div className="flex items-center gap-2 mb-3">
           <RefreshCw className="w-5 h-5 text-amber-600" />

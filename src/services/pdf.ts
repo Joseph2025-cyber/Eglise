@@ -1,11 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatCurrency, formatDateShort, formatDate, MONTH_NAMES, type Currency } from '@/utils/format';
+import { formatDual, formatCdf, formatUsd, formatDateShort, formatDate, MONTH_NAMES } from '@/utils/format';
 import type { EntreeWithCategorie, Sortie, Reversement, Config } from '@/types';
-
-function fmt(config: Config, amount: number): string {
-  return formatCurrency(amount, config.devise as Currency);
-}
 
 function header(doc: jsPDF, config: Config, subtitle: string) {
   doc.setFontSize(16);
@@ -44,7 +40,7 @@ export function generateRecuEntree(
   const doc = new jsPDF();
   header(doc, config, 'REÇU D\'ENTRÉE');
 
-  let y = 50;
+  const y = 50;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
 
@@ -53,7 +49,8 @@ export function generateRecuEntree(
     { label: 'Date', value: formatDateShort(entree.date) },
     { label: 'Culte / Service', value: entree.culte },
     { label: 'Catégorie', value: categorieNom },
-    { label: 'Montant', value: fmt(config, entree.montant) },
+    { label: 'Devise saisie', value: entree.devise },
+    { label: 'Montant', value: formatDual(entree.montant_cdf, entree.montant_usd) },
     { label: 'Note', value: entree.note || '—' },
   ];
 
@@ -83,7 +80,8 @@ export function generateRecuSortie(config: Config, sortie: Sortie) {
     { label: 'N° Reçu', value: `SORT-${sortie.id.toString().padStart(6, '0')}` },
     { label: 'Date', value: formatDateShort(sortie.date) },
     { label: 'Nature du décaissement', value: sortie.nature },
-    { label: 'Montant', value: fmt(config, sortie.montant) },
+    { label: 'Devise saisie', value: sortie.devise },
+    { label: 'Montant', value: formatDual(sortie.montant_cdf, sortie.montant_usd) },
     { label: 'Description', value: sortie.description || '—' },
     { label: 'Opérateur', value: sortie.nom_operateur },
     { label: 'Téléphone', value: sortie.telephone_operateur },
@@ -119,7 +117,7 @@ export function generateRecuReversement(
     { label: 'N° Reçu', value: `REV-${reversement.id.toString().padStart(6, '0')}` },
     { label: 'Type', value: label },
     { label: 'Date', value: formatDateShort(reversement.date_reversement) },
-    { label: 'Montant', value: fmt(config, reversement.montant) },
+    { label: 'Montant', value: formatDual(reversement.montant_cdf, reversement.montant_usd) },
     {
       label: 'Période',
       value:
@@ -149,10 +147,14 @@ interface ReportData {
   entrees: EntreeWithCategorie[];
   sorties: Sortie[];
   reversements: Reversement[];
-  totalEntrees: number;
-  totalSorties: number;
-  totalReversements: number;
-  solde: number;
+  totalEntreesCdf: number;
+  totalEntreesUsd: number;
+  totalSortiesCdf: number;
+  totalSortiesUsd: number;
+  totalReversementsCdf: number;
+  totalReversementsUsd: number;
+  soldeCdf: number;
+  soldeUsd: number;
 }
 
 export function generateReport(config: Config, data: ReportData) {
@@ -162,14 +164,16 @@ export function generateReport(config: Config, data: ReportData) {
   doc.setFontSize(10);
   doc.setFont('helvetica', 'italic');
   doc.text(`Période: ${data.periodeLabel}`, 105, 44, { align: 'center' });
+  doc.text(`Taux de change: 1 USD = ${new Intl.NumberFormat('fr-FR').format(config.taux_usd_cdf || 2800)} CDF`, 105, 49, { align: 'center' });
 
-  let y = 54;
+  let y = 56;
 
-  // Entrées par catégorie
-  const parCategorie = new Map<string, number>();
+  const parCategorieCdf = new Map<string, number>();
+  const parCategorieUsd = new Map<string, number>();
   for (const e of data.entrees) {
     const nom = e.categorie_nom || '—';
-    parCategorie.set(nom, (parCategorie.get(nom) || 0) + e.montant);
+    parCategorieCdf.set(nom, (parCategorieCdf.get(nom) || 0) + e.montant_cdf);
+    parCategorieUsd.set(nom, (parCategorieUsd.get(nom) || 0) + e.montant_usd);
   }
 
   doc.setFontSize(12);
@@ -179,15 +183,16 @@ export function generateReport(config: Config, data: ReportData) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Date', 'Culte', 'Catégorie', 'Montant', 'Note']],
+    head: [['Date', 'Culte', 'Catégorie', 'Montant CDF', 'Montant USD', 'Note']],
     body: data.entrees.map((e) => [
       formatDateShort(e.date),
       e.culte,
       e.categorie_nom || '—',
-      fmt(config, e.montant),
+      formatCdf(e.montant_cdf),
+      formatUsd(e.montant_usd),
       e.note || '—',
     ]),
-    foot: [['', '', 'Total Entrées', fmt(config, data.totalEntrees), '']],
+    foot: [['', '', 'Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd), '']],
     theme: 'striped',
     headStyles: { fillColor: [22, 101, 52], fontSize: 9 },
     bodyStyles: { fontSize: 8 },
@@ -197,7 +202,6 @@ export function generateReport(config: Config, data: ReportData) {
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
-  // Résumé par catégorie
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text('Résumé par catégorie', 14, y);
@@ -205,8 +209,8 @@ export function generateReport(config: Config, data: ReportData) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Catégorie', 'Montant']],
-    body: Array.from(parCategorie.entries()).map(([nom, montant]) => [nom, fmt(config, montant)]),
+    head: [['Catégorie', 'Montant CDF', 'Montant USD']],
+    body: Array.from(parCategorieCdf.entries()).map(([nom]) => [nom, formatCdf(parCategorieCdf.get(nom) || 0), formatUsd(parCategorieUsd.get(nom) || 0)]),
     theme: 'striped',
     headStyles: { fillColor: [22, 101, 52], fontSize: 9 },
     bodyStyles: { fontSize: 9 },
@@ -215,7 +219,6 @@ export function generateReport(config: Config, data: ReportData) {
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
-  // Sorties
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('SORTIES', 14, y);
@@ -223,15 +226,16 @@ export function generateReport(config: Config, data: ReportData) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Date', 'Nature', 'Montant', 'Description', 'Opérateur']],
+    head: [['Date', 'Nature', 'Montant CDF', 'Montant USD', 'Description', 'Opérateur']],
     body: data.sorties.map((s) => [
       formatDateShort(s.date),
       s.nature,
-      fmt(config, s.montant),
+      formatCdf(s.montant_cdf),
+      formatUsd(s.montant_usd),
       s.description || '—',
       `${s.nom_operateur} (${s.telephone_operateur})`,
     ]),
-    foot: [['', 'Total Sorties', fmt(config, data.totalSorties), '', '']],
+    foot: [['', 'Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd), '', '']],
     theme: 'striped',
     headStyles: { fillColor: [185, 28, 28], fontSize: 9 },
     bodyStyles: { fontSize: 8 },
@@ -241,7 +245,6 @@ export function generateReport(config: Config, data: ReportData) {
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
-  // Reversements
   if (data.reversements.length > 0) {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
@@ -250,16 +253,17 @@ export function generateReport(config: Config, data: ReportData) {
 
     autoTable(doc, {
       startY: y,
-      head: [['Date', 'Type', 'Montant', 'Période']],
+      head: [['Date', 'Type', 'Montant CDF', 'Montant USD', 'Période']],
       body: data.reversements.map((r) => [
         formatDateShort(r.date_reversement),
         r.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)',
-        fmt(config, r.montant),
+        formatCdf(r.montant_cdf),
+        formatUsd(r.montant_usd),
         r.periode_debut && r.periode_fin
           ? `${formatDateShort(r.periode_debut)} - ${formatDateShort(r.periode_fin)}`
           : '—',
       ]),
-      foot: [['', 'Total Reversements', fmt(config, data.totalReversements), '']],
+      foot: [['', 'Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd), '']],
       theme: 'striped',
       headStyles: { fillColor: [180, 83, 9], fontSize: 9 },
       bodyStyles: { fontSize: 8 },
@@ -270,7 +274,6 @@ export function generateReport(config: Config, data: ReportData) {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
   }
 
-  // Synthèse
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('SYNTHÈSE', 14, y);
@@ -278,12 +281,12 @@ export function generateReport(config: Config, data: ReportData) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Indicateur', 'Montant']],
+    head: [['Indicateur', 'Montant CDF', 'Montant USD']],
     body: [
-      ['Total Entrées', fmt(config, data.totalEntrees)],
-      ['Total Sorties', fmt(config, data.totalSorties)],
-      ['Total Reversements', fmt(config, data.totalReversements)],
-      ['Solde Net en Caisse', fmt(config, data.solde)],
+      ['Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd)],
+      ['Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd)],
+      ['Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd)],
+      ['Solde Net en Caisse', formatCdf(data.soldeCdf), formatUsd(data.soldeUsd)],
     ],
     theme: 'grid',
     headStyles: { fillColor: [30, 58, 95], fontSize: 10 },

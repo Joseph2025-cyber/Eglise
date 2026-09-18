@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { query, queryOne, execute } from '@/lib/database';
-import type { Entree, EntreeWithCategorie, Sortie, Reversement } from '@/types';
+import type { Entree, EntreeWithCategorie, Sortie, Reversement, Devise } from '@/types';
 
 export function useFinance() {
   const [loading, setLoading] = useState(false);
@@ -12,8 +12,9 @@ export function useFinance() {
       setError(null);
       try {
         const id = await execute(
-          'INSERT INTO entrees (date, culte, categorie_id, montant, note) VALUES (?, ?, ?, ?, ?)',
-          [data.date, data.culte, data.categorie_id, data.montant, data.note],
+          `INSERT INTO entrees (date, culte, categorie_id, devise, montant, montant_cdf, montant_usd, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [data.date, data.culte, data.categorie_id, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.note],
         );
         const row = await queryOne<EntreeWithCategorie>(
           `SELECT e.*, c.nom as categorie_nom FROM entrees e
@@ -36,8 +37,9 @@ export function useFinance() {
     setError(null);
     try {
       const id = await execute(
-        'INSERT INTO sorties (date, nature, montant, description, nom_operateur, telephone_operateur) VALUES (?, ?, ?, ?, ?, ?)',
-        [data.date, data.nature, data.montant, data.description, data.nom_operateur, data.telephone_operateur],
+        `INSERT INTO sorties (date, nature, devise, montant, montant_cdf, montant_usd, description, nom_operateur, telephone_operateur)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [data.date, data.nature, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.description, data.nom_operateur, data.telephone_operateur],
       );
       const row = await queryOne<Sortie>('SELECT * FROM sorties WHERE id = ?', [id]);
       setLoading(false);
@@ -54,8 +56,9 @@ export function useFinance() {
     setError(null);
     try {
       const id = await execute(
-        'INSERT INTO reversements (type, montant, date_reversement, periode_debut, periode_fin) VALUES (?, ?, ?, ?, ?)',
-        [data.type, data.montant, data.date_reversement, data.periode_debut, data.periode_fin],
+        `INSERT INTO reversements (type, montant_cdf, montant_usd, date_reversement, periode_debut, periode_fin)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [data.type, data.montant_cdf, data.montant_usd, data.date_reversement, data.periode_debut, data.periode_fin],
       );
       const row = await queryOne<Reversement>('SELECT * FROM reversements WHERE id = ?', [id]);
       setLoading(false);
@@ -120,19 +123,23 @@ export function useFinance() {
       [start, end],
     );
 
-    const monthlyEntrees = new Array(12).fill(0);
-    const monthlySorties = new Array(12).fill(0);
+    const monthlyEntreesCdf = new Array(12).fill(0);
+    const monthlyEntreesUsd = new Array(12).fill(0);
+    const monthlySortiesCdf = new Array(12).fill(0);
+    const monthlySortiesUsd = new Array(12).fill(0);
 
     for (const e of entrees) {
       const m = new Date(e.date).getMonth();
-      monthlyEntrees[m] += e.montant;
+      monthlyEntreesCdf[m] += e.montant_cdf;
+      monthlyEntreesUsd[m] += e.montant_usd;
     }
     for (const s of sorties) {
       const m = new Date(s.date).getMonth();
-      monthlySorties[m] += s.montant;
+      monthlySortiesCdf[m] += s.montant_cdf;
+      monthlySortiesUsd[m] += s.montant_usd;
     }
 
-    return { monthlyEntrees, monthlySorties, entrees, sorties };
+    return { monthlyEntreesCdf, monthlyEntreesUsd, monthlySortiesCdf, monthlySortiesUsd, entrees, sorties };
   }, []);
 
   const deleteAllEntrees = useCallback(async () => {

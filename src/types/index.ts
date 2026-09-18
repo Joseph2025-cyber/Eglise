@@ -1,8 +1,10 @@
+export type Devise = 'CDF' | 'USD';
+
 export interface Config {
   id: number;
   nom_communaute: string;
   paroisse: string;
-  devise: 'CDF' | 'USD';
+  taux_usd_cdf: number;
   mdp_acces: string;
   mdp_sortie: string;
   exercice_en_cours: number;
@@ -19,7 +21,10 @@ export interface Entree {
   date: string;
   culte: string;
   categorie_id: number;
+  devise: Devise;
   montant: number;
+  montant_cdf: number;
+  montant_usd: number;
   note: string | null;
   created_at: string;
 }
@@ -32,7 +37,10 @@ export interface Sortie {
   id: number;
   date: string;
   nature: string;
+  devise: Devise;
   montant: number;
+  montant_cdf: number;
+  montant_usd: number;
   description: string | null;
   nom_operateur: string;
   telephone_operateur: string;
@@ -42,7 +50,8 @@ export interface Sortie {
 export interface Reversement {
   id: number;
   type: 'communaute_centrale' | 'apotre';
-  montant: number;
+  montant_cdf: number;
+  montant_usd: number;
   date_reversement: string;
   periode_debut: string | null;
   periode_fin: string | null;
@@ -74,12 +83,19 @@ export const CATEGORIES_REVERSEMENT = [
 ] as const;
 
 export type DashboardTotals = {
-  categories: { nom: string; montant: number }[];
-  totalGlobal: number;
-  totalCommunauteCentrale: number;
-  totalApotre: number;
-  entreesMois: number;
-  entreesMoisPrecedent: number;
-  sortiesMois: number;
-  soldeNet: number;
+  categories: { nom: string; montant_cdf: number; montant_usd: number }[];
+  totalGlobalCdf: number;
+  totalGlobalUsd: number;
+  totalCommunauteCentraleCdf: number;
+  totalCommunauteCentraleUsd: number;
+  totalApotreCdf: number;
+  totalApotreUsd: number;
+  entreesMoisCdf: number;
+  entreesMoisUsd: number;
+  entreesMoisPrecedentCdf: number;
+  entreesMoisPrecedentUsd: number;
+  sortiesMoisCdf: number;
+  sortiesMoisUsd: number;
+  soldeNetCdf: number;
+  soldeNetUsd: number;
 };

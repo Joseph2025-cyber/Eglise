@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ArrowLeft, Save, X, Calendar, Tag, DollarSign, FileText, CheckCircle2 } from 'lucide-react';
-import type { Config, Categorie } from '@/types';
+import type { Config, Categorie, Devise } from '@/types';
 import { CULTE_OPTIONS } from '@/types';
 import { useFinance } from '@/hooks/useFinance';
-import { todayISO, formatCurrency, type Currency } from '@/utils/format';
+import { todayISO, formatDual } from '@/utils/format';
 import { generateRecuEntree } from '@/services/pdf';
 
 interface EntryFormProps {
@@ -17,10 +17,21 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
   const [date, setDate] = useState(todayISO());
   const [culte, setCulte] = useState<string>(CULTE_OPTIONS[0]);
   const [categorieId, setCategorieId] = useState<number>(categories[0]?.id || 0);
+  const [devise, setDevise] = useState<Devise>('CDF');
   const [montant, setMontant] = useState('');
   const [note, setNote] = useState('');
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const taux = config.taux_usd_cdf || 2800;
+
+  const computeAmounts = () => {
+    const m = parseInt(montant, 10) || 0;
+    if (devise === 'CDF') {
+      return { montant_cdf: m, montant_usd: Math.round(m / taux) };
+    }
+    return { montant_cdf: m * taux, montant_usd: m };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,11 +40,15 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
       setError('Veuillez entrer un montant valide');
       return;
     }
+    const { montant_cdf, montant_usd } = computeAmounts();
     const result = await addEntree({
       date,
       culte,
       categorie_id: categorieId,
+      devise,
       montant: montantNum,
+      montant_cdf,
+      montant_usd,
       note: note || null,
     });
     if (result) {
@@ -81,7 +96,7 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
 
@@ -117,7 +132,37 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
 
         <div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant ({config.devise})
+            <DollarSign className="w-4 h-4 text-emerald-600" /> Devise
+          </label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setDevise('CDF')}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${
+                devise === 'CDF'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              Franc Congolais (CDF)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDevise('USD')}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${
+                devise === 'USD'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              Dollar Américain (USD)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant ({devise})
           </label>
           <input
             type="number"
@@ -127,7 +172,12 @@ export function EntryForm({ config, categories, onBack }: EntryFormProps) {
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-lg font-semibold"
           />
           {montant && parseInt(montant, 10) > 0 && (
-            <p className="text-sm text-emerald-600 mt-1 font-medium">{formatCurrency(parseInt(montant, 10), config.devise as Currency)}</p>
+            <p className="text-sm text-emerald-600 mt-1 font-medium">
+              {(() => {
+                const { montant_cdf, montant_usd } = computeAmounts();
+                return formatDual(montant_cdf, montant_usd);
+              })()}
+            </p>
           )}
         </div>
 

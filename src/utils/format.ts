@@ -1,16 +1,22 @@
-export type Currency = 'CDF' | 'USD';
+import type { Devise } from '@/types';
 
-export function formatCurrency(amount: number, currency: Currency = 'CDF'): string {
+export function formatCurrency(amount: number, devise: Devise = 'CDF'): string {
   const formatted = new Intl.NumberFormat('fr-FR').format(Math.round(amount));
-  return `${formatted} ${currency}`;
+  return `${formatted} ${devise}`;
 }
 
-export function formatFC(amount: number): string {
-  return formatCurrency(amount, 'CDF');
+export function formatDual(cdf: number, usd: number): string {
+  const cdfStr = new Intl.NumberFormat('fr-FR').format(Math.round(cdf));
+  const usdStr = new Intl.NumberFormat('fr-FR').format(Math.round(usd));
+  return `${cdfStr} CDF / ${usdStr} USD`;
 }
 
-export function formatUSD(amount: number): string {
-  return formatCurrency(amount, 'USD');
+export function formatCdf(cdf: number): string {
+  return `${new Intl.NumberFormat('fr-FR').format(Math.round(cdf))} CDF`;
+}
+
+export function formatUsd(usd: number): string {
+  return `${new Intl.NumberFormat('fr-FR').format(Math.round(usd))} USD`;
 }
 
 export function formatNumber(amount: number): string {

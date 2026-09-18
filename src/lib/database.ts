@@ -34,10 +34,12 @@ async function loadFromStorage(): Promise<Uint8Array | null> {
 async function saveToStorage(data: Uint8Array): Promise<void> {
   if (isTauri()) {
     try {
-      const { writeFile, mkdir } = await import('@tauri-apps/plugin-fs');
+      const { writeFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
       const { appDataDir } = await import('@tauri-apps/api/path');
       const dir = await appDataDir();
-      await mkdir(dir, { recursive: true }).catch(() => {});
+      if (!(await exists(dir))) {
+        await mkdir(dir, { recursive: true });
+      }
       const path = `${dir}/church_finance.sqlite`;
       await writeFile(path, data);
     } catch (err) {
@@ -74,7 +76,7 @@ export async function getDb(): Promise<Database> {
       db.run(SCHEMA_SQL);
       await persist();
     } else {
-      db.run(`UPDATE config SET devise = 'CDF' WHERE devise = 'FC' OR devise IS NULL;`);
+      db.run(SCHEMA_SQL);
       await persist();
     }
 
@@ -127,9 +129,10 @@ export async function execute(sql: string, params: unknown[] = []): Promise<numb
   bindParams(stmt, params);
   stmt.step();
   stmt.free();
-  await persist();
   const result = database.exec('SELECT last_insert_rowid() as id');
-  return result.length > 0 ? (result[0].values[0][0] as number) : 0;
+  const id = result.length > 0 ? (result[0].values[0][0] as number) : 0;
+  await persist();
+  return id;
 }
 
 export async function executeMany(sql: string, paramsList: unknown[][] = []): Promise<void> {

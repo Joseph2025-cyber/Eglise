@@ -28,30 +28,41 @@ export function Reports({ config, onBack }: ReportsProps) {
 
   const currentYear = new Date().getFullYear();
 
+  const buildReport = async (start: string, end: string, title: string, periodeLabel: string) => {
+    const [entrees, sorties, reversements] = await Promise.all([
+      getEntrees(start, end),
+      getSorties(start, end),
+      getReversements(start, end),
+    ]);
+    const totalEntreesCdf = entrees.reduce((s, e) => s + e.montant_cdf, 0);
+    const totalEntreesUsd = entrees.reduce((s, e) => s + e.montant_usd, 0);
+    const totalSortiesCdf = sorties.reduce((s, s2) => s + s2.montant_cdf, 0);
+    const totalSortiesUsd = sorties.reduce((s, s2) => s + s2.montant_usd, 0);
+    const totalRevCdf = reversements.reduce((s, r) => s + r.montant_cdf, 0);
+    const totalRevUsd = reversements.reduce((s, r) => s + r.montant_usd, 0);
+    generateReport(config, {
+      title,
+      periodeLabel,
+      entrees,
+      sorties,
+      reversements,
+      totalEntreesCdf,
+      totalEntreesUsd,
+      totalSortiesCdf,
+      totalSortiesUsd,
+      totalReversementsCdf: totalRevCdf,
+      totalReversementsUsd: totalRevUsd,
+      soldeCdf: totalEntreesCdf - totalSortiesCdf - totalRevCdf,
+      soldeUsd: totalEntreesUsd - totalSortiesUsd - totalRevUsd,
+    });
+  };
+
   const generateMonthly = async (month: number) => {
     setGenerating(true);
     setError(null);
     try {
       const { start, end } = getMonthRange(currentYear, month);
-      const [entrees, sorties, reversements] = await Promise.all([
-        getEntrees(start, end),
-        getSorties(start, end),
-        getReversements(start, end),
-      ]);
-      const totalEntrees = entrees.reduce((s, e) => s + e.montant, 0);
-      const totalSorties = sorties.reduce((s, s2) => s + s2.montant, 0);
-      const totalRev = reversements.reduce((s, r) => s + r.montant, 0);
-      generateReport(config, {
-        title: `Rapport Mensuel - ${MONTH_NAMES[month]} ${currentYear}`,
-        periodeLabel: `${MONTH_NAMES[month]} ${currentYear}`,
-        entrees,
-        sorties,
-        reversements,
-        totalEntrees,
-        totalSorties,
-        totalReversements: totalRev,
-        solde: totalEntrees - totalSorties - totalRev,
-      });
+      await buildReport(start, end, `Rapport Mensuel - ${MONTH_NAMES[month]} ${currentYear}`, `${MONTH_NAMES[month]} ${currentYear}`);
     } catch {
       setError('Erreur lors de la génération du rapport');
     }
@@ -63,25 +74,7 @@ export function Reports({ config, onBack }: ReportsProps) {
     setError(null);
     try {
       const { start, end } = getWeekRange(mondayDate);
-      const [entrees, sorties, reversements] = await Promise.all([
-        getEntrees(start, end),
-        getSorties(start, end),
-        getReversements(start, end),
-      ]);
-      const totalEntrees = entrees.reduce((s, e) => s + e.montant, 0);
-      const totalSorties = sorties.reduce((s, s2) => s + s2.montant, 0);
-      const totalRev = reversements.reduce((s, r) => s + r.montant, 0);
-      generateReport(config, {
-        title: 'Rapport Hebdomadaire',
-        periodeLabel: `${start} - ${end}`,
-        entrees,
-        sorties,
-        reversements,
-        totalEntrees,
-        totalSorties,
-        totalReversements: totalRev,
-        solde: totalEntrees - totalSorties - totalRev,
-      });
+      await buildReport(start, end, 'Rapport Hebdomadaire', `${start} - ${end}`);
     } catch {
       setError('Erreur lors de la génération du rapport');
     }
@@ -93,25 +86,7 @@ export function Reports({ config, onBack }: ReportsProps) {
     setError(null);
     try {
       const { start, end } = getQuarterRange(currentYear, quarter);
-      const [entrees, sorties, reversements] = await Promise.all([
-        getEntrees(start, end),
-        getSorties(start, end),
-        getReversements(start, end),
-      ]);
-      const totalEntrees = entrees.reduce((s, e) => s + e.montant, 0);
-      const totalSorties = sorties.reduce((s, s2) => s + s2.montant, 0);
-      const totalRev = reversements.reduce((s, r) => s + r.montant, 0);
-      generateReport(config, {
-        title: `Rapport Trimestriel - T${quarter} ${currentYear}`,
-        periodeLabel: `T${quarter} ${currentYear}`,
-        entrees,
-        sorties,
-        reversements,
-        totalEntrees,
-        totalSorties,
-        totalReversements: totalRev,
-        solde: totalEntrees - totalSorties - totalRev,
-      });
+      await buildReport(start, end, `Rapport Trimestriel - T${quarter} ${currentYear}`, `T${quarter} ${currentYear}`);
     } catch {
       setError('Erreur lors de la génération du rapport');
     }
@@ -123,25 +98,7 @@ export function Reports({ config, onBack }: ReportsProps) {
     setError(null);
     try {
       const { start, end } = getYearRange(year);
-      const [entrees, sorties, reversements] = await Promise.all([
-        getEntrees(start, end),
-        getSorties(start, end),
-        getReversements(start, end),
-      ]);
-      const totalEntrees = entrees.reduce((s, e) => s + e.montant, 0);
-      const totalSorties = sorties.reduce((s, s2) => s + s2.montant, 0);
-      const totalRev = reversements.reduce((s, r) => s + r.montant, 0);
-      generateReport(config, {
-        title: `Rapport Annuel ${year}`,
-        periodeLabel: `Année ${year}`,
-        entrees,
-        sorties,
-        reversements,
-        totalEntrees,
-        totalSorties,
-        totalReversements: totalRev,
-        solde: totalEntrees - totalSorties - totalRev,
-      });
+      await buildReport(start, end, `Rapport Annuel ${year}`, `Année ${year}`);
     } catch {
       setError('Erreur lors de la génération du rapport');
     }
@@ -209,7 +166,6 @@ export function Reports({ config, onBack }: ReportsProps) {
         </div>
       )}
 
-      {/* Weekly report selection */}
       {activeType === 'weekly' && !generating && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Sélection de la semaine</h2>
@@ -243,7 +199,6 @@ export function Reports({ config, onBack }: ReportsProps) {
         </div>
       )}
 
-      {/* Monthly report selection */}
       {activeType === 'monthly' && !generating && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Choisir le mois ({currentYear})</h2>
@@ -267,7 +222,6 @@ export function Reports({ config, onBack }: ReportsProps) {
         </div>
       )}
 
-      {/* Quarterly report selection */}
       {activeType === 'quarterly' && !generating && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Choisir le trimestre ({currentYear})</h2>
@@ -291,7 +245,6 @@ export function Reports({ config, onBack }: ReportsProps) {
         </div>
       )}
 
-      {/* Annual report selection */}
       {activeType === 'annual' && !generating && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">Choisir l'année</h2>
