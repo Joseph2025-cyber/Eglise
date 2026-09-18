@@ -8,7 +8,7 @@ export function formatCurrency(amount: number, devise: Devise = 'CDF'): string {
 export function formatDual(cdf: number, usd: number): string {
   const cdfStr = new Intl.NumberFormat('fr-FR').format(Math.round(cdf));
   const usdStr = new Intl.NumberFormat('fr-FR').format(Math.round(usd));
-  return `${cdfStr} CDF / ${usdStr} USD`;
+  return `${cdfStr} CDF | ${usdStr} USD`;
 }
 
 export function formatCdf(cdf: number): string {
@@ -87,6 +87,10 @@ export function getMondayOfDate(date: string): string {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
   return d.toISOString().split('T')[0];
+}
+
+export function lastDayOfMonth(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
 export const MONTH_NAMES = [
