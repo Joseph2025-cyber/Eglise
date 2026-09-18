@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS config (
   id INTEGER PRIMARY KEY DEFAULT 1,
   nom_communaute TEXT NOT NULL DEFAULT 'ÉGLISE GLOIRE DE DIEU',
   paroisse TEXT NOT NULL DEFAULT 'PAROISSE DE KYESHERO',
-  taux_usd_cdf REAL NOT NULL DEFAULT 2800,
+  -- Colonne héritée: aucune conversion CDF/USD n'est effectuée par l'application.
+  taux_usd_cdf REAL NOT NULL DEFAULT 0,
   mdp_acces TEXT NOT NULL DEFAULT 'admin123',
   mdp_sortie TEXT NOT NULL DEFAULT 'sortie123',
   exercice_en_cours INTEGER NOT NULL DEFAULT 2026,

@@ -4,6 +4,7 @@ export interface Config {
   id: number;
   nom_communaute: string;
   paroisse: string;
+  /** Conservé pour compatibilité avec les anciennes bases; jamais utilisé pour convertir. */
   taux_usd_cdf: number;
   mdp_acces: string;
   mdp_sortie: string;
@@ -23,7 +24,9 @@ export interface Entree {
   categorie_id: number;
   devise: Devise;
   montant: number;
+  /** Montant réel de la caisse CDF; 0 pour une entrée USD. */
   montant_cdf: number;
+  /** Montant réel de la caisse USD; 0 pour une entrée CDF. */
   montant_usd: number;
   note: string | null;
   created_at: string;
