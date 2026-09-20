@@ -24,7 +24,7 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   const computeAmounts = () => {
-    const m = parseInt(montant, 10) || 0;
+    const m = Number(montant) || 0;
     if (devise === 'CDF') return { montant_cdf: m, montant_usd: 0 };
     return { montant_cdf: 0, montant_usd: m };
   };
@@ -35,7 +35,7 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
       setError('Mot de passe de confirmation incorrect');
       return;
     }
-    const montantNum = parseInt(montant, 10);
+    const montantNum = Number(montant);
     if (!montantNum || montantNum <= 0) {
       setError('Veuillez entrer un montant valide');
       return;
@@ -108,10 +108,10 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
             <DollarSign className="w-4 h-4 text-red-600" /> Devise
           </label>
           <div className="flex gap-3">
-            <button type="button" onClick={() => setDevise('CDF')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'CDF' ? 'bg-red-600 text-white border-red-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+            <button type="button" onClick={() => setDevise('CDF')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'CDF' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-200 hover:border-red-200'}`}>
               Franc Congolais (CDF)
             </button>
-            <button type="button" onClick={() => setDevise('USD')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'USD' ? 'bg-red-600 text-white border-red-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+            <button type="button" onClick={() => setDevise('USD')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'USD' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-200 hover:border-red-200'}`}>
               Dollar Américain (USD)
             </button>
           </div>
@@ -121,8 +121,8 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
             <DollarSign className="w-4 h-4 text-red-600" /> Montant ({devise})
           </label>
-          <input type="number" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder="0" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all text-lg font-semibold" />
-          {montant && parseInt(montant, 10) > 0 && (
+          <input type="number" step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder="0" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all text-lg font-semibold" />
+          {montant && Number(montant) > 0 && (
             <p className="text-sm text-red-600 mt-1 font-medium">{formatDual(...Object.values(computeAmounts()) as [number, number])}</p>
           )}
         </div>
@@ -131,7 +131,7 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
             <FileText className="w-4 h-4 text-red-600" /> Description (optionnel)
           </label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all resize-none" placeholder="Description du décaissement..." />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all" />
         </div>
 
         <div>
@@ -158,7 +158,7 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>}
 
         <div className="flex gap-3 pt-2">
-          <button type="submit" className="flex-1 py-3 px-6 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2">
+          <button type="submit" className="flex-1 py-3 px-6 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
             <Save className="w-5 h-5" /> Enregistrer
           </button>
           <button type="button" onClick={onBack} className="flex-1 py-3 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all flex items-center justify-center gap-2">
@@ -169,3 +169,4 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
     </div>
   );
 }
+

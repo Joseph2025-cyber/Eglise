@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { LogOut, LayoutDashboard, BookPlus, BookMinus, FileBarChart, Settings as SettingsIcon, Church } from 'lucide-react';
+import { LogOut, LayoutDashboard, BookPlus, BookMinus, FileBarChart, Settings as SettingsIcon, Church, History } from 'lucide-react';
 import { useConfig } from '@/hooks/useConfig';
 import { Home } from '@/pages/Home';
 import { Dashboard } from '@/pages/Dashboard';
 import { EntryForm } from '@/pages/EntryForm';
 import { ExitForm } from '@/pages/ExitForm';
 import { Reports } from '@/pages/Reports';
+import { HistoryPage } from '@/pages/HistoryPage';
 import { SettingsPage } from '@/pages/Settings';
 
-type Page = 'home' | 'dashboard' | 'entry' | 'exit' | 'reports' | 'settings';
+type Page = 'home' | 'dashboard' | 'entry' | 'exit' | 'history' | 'reports' | 'settings';
 
 export default function App() {
   const { config, categories, loading, loadConfig } = useConfig();
@@ -43,13 +44,13 @@ export default function App() {
     { id: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'entry' as Page, label: 'Entrée', icon: BookPlus },
     { id: 'exit' as Page, label: 'Sortie', icon: BookMinus },
+    { id: 'history' as Page, label: 'Historique', icon: History },
     { id: 'reports' as Page, label: 'Rapports', icon: FileBarChart },
     { id: 'settings' as Page, label: 'Paramètres', icon: SettingsIcon },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
@@ -71,9 +72,7 @@ export default function App() {
                     key={item.id}
                     onClick={() => setPage(item.id)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      isActive
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                      isActive ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
@@ -97,7 +96,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Page content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {page === 'dashboard' && (
           <Dashboard config={config} categories={categories} onNavigate={(p) => setPage(p as Page)} />
@@ -107,6 +105,9 @@ export default function App() {
         )}
         {page === 'exit' && (
           <ExitForm config={config} onBack={() => setPage('dashboard')} />
+        )}
+        {page === 'history' && (
+          <HistoryPage config={config} onBack={() => setPage('dashboard')} />
         )}
         {page === 'reports' && (
           <Reports config={config} onBack={() => setPage('dashboard')} />
@@ -120,7 +121,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile bottom nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
         <div className="flex justify-around">
           {navItems.map((item) => {
@@ -129,9 +129,7 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setPage(item.id)}
-                className={`flex flex-col items-center gap-1 py-2 px-2 flex-1 transition-colors ${
-                  isActive ? 'text-emerald-600' : 'text-gray-400'
-                }`}
+                className={`flex flex-col items-center gap-1 py-2 px-2 flex-1 transition-colors ${isActive ? 'text-emerald-600' : 'text-gray-400'}`}
               >
                 <item.icon className="w-5 h-5" />
                 <span className="text-[10px] font-medium">{item.label}</span>
@@ -141,8 +139,8 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Spacer for mobile nav */}
       <div className="h-16 lg:hidden"></div>
     </div>
   );
 }
+

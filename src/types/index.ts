@@ -83,6 +83,8 @@ export const CATEGORIES_REVERSEMENT = [
   'Évangélisation',
 ] as const;
 
+export const SPECIAL_CATEGORY_NAMES = ['Offrandes Extraordinaires', 'Dons'] as const;
+
 export type DashboardTotals = {
   categories: { nom: string; montant_cdf: number; montant_usd: number }[];
   totalGlobalCdf: number;
