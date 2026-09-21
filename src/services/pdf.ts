@@ -2,9 +2,157 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCdf, formatUsd, formatDate, formatDateShort } from '@/utils/format';
 import type { Config, EntreeWithCategorie, Reversement, Sortie } from '@/types';
-function header(doc: jsPDF, config: Config, subtitle: string) { doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.text(config.nom_communaute,105,18,{align:'center'}); doc.setFontSize(11); doc.setFont('helvetica','normal'); doc.text(config.paroisse,105,25,{align:'center'}); doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.text(subtitle,105,34,{align:'center'}); doc.line(14,38,196,38); }
-function footer(doc: jsPDF) { const pages=doc.getNumberOfPages(); for(let page=1;page<=pages;page++){doc.setPage(page);doc.setFontSize(8);doc.setFont('helvetica','normal');doc.text(`Édité le ${formatDate(new Date())} - Page ${page}/${pages}`,105,290,{align:'center'});doc.text('Approuvé par le pasteur Kameya Kaboyi Josué',105,296,{align:'center'});} }
-function receipt(doc: jsPDF, config: Config, title: string, rows: [string,string][], color: [number,number,number], filename: string) { header(doc,config,title); autoTable(doc,{startY:50,head:[['Champ','Valeur']],body:rows,theme:'striped',headStyles:{fillColor:color,fontSize:10},bodyStyles:{fontSize:9},margin:{left:14,right:14}}); footer(doc); doc.save(filename); }
-export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string) { const doc=new jsPDF(); receipt(doc,config,"REÇU D'ENTRÉE",[['N° Reçu',`ENT-${entree.id.toString().padStart(6,'0')}`],['Date',formatDateShort(entree.date)],['Culte / Service',entree.culte],['Nature',categorieNom],['Caisse',entree.devise],['Montant',entree.devise==='CDF'?formatCdf(entree.montant_cdf):formatUsd(entree.montant_usd)],['Note',entree.note||'—']],[22,101,52],`recu_entree_${entree.id}.pdf`); }
-export function generateRecuSortie(config: Config, sortie: Sortie) { const doc=new jsPDF(); receipt(doc,config,'REÇU DE SORTIE',[['N° Reçu',`SORT-${sortie.id.toString().padStart(6,'0')}`],['Date',formatDateShort(sortie.date)],['Nature',sortie.nature],['Caisse',sortie.devise],['Montant',sortie.devise==='CDF'?formatCdf(sortie.montant_cdf):formatUsd(sortie.montant_usd)],['Description',sortie.description||'—'],['Nom de l’opérateur',sortie.nom_operateur],['Numéro de l’opérateur',sortie.numero_operateur||'—'],['Téléphone',sortie.telephone_operateur],['Bénéficiaire',sortie.beneficiaire||'—'],['N° bénéficiaire',sortie.numero_beneficiaire||'—']],[185,28,28],`recu_sortie_${sortie.id}.pdf`); }
-export function generateRecuReversement(config: Config, reversement: Reversement, label: string) { const doc=new jsPDF(); const rows: [string,string][]=[['N° Reçu',`REV-${reversement.id.toString().padStart(6,'0')}`],['Type',label],['Date',formatDateShort(reversement.date_reversement)]]; if(reversement.montant_cdf>0) rows.push(['Caisse CDF',formatCdf(reversement.montant_cdf)]); if(reversement.montant_usd>0) rows.push(['Caisse USD',formatUsd(reversement.montant_usd)]); rows.push(['Période',reversement.periode_debut&&reversement.periode_fin?`${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}`:'—']); receipt(doc,config,'REÇU DE REVERSEMENT',rows,[180,83,9],`recu_reversement_${reversement.id}.pdf`); }
+
+function header(doc: jsPDF, config: Config, subtitle: string) {
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(config.nom_communaute, 105, 18, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(config.paroisse, 105, 25, { align: 'center' });
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(subtitle, 105, 34, { align: 'center' });
+  doc.line(14, 38, 196, 38);
+}
+
+function footer(doc: jsPDF) {
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Édité le ${formatDate(new Date())} - Page ${page}/${pages}`, 105, 290, { align: 'center' });
+    doc.text('Approuvé par le pasteur Kameya Kaboyi Josué', 105, 296, { align: 'center' });
+  }
+}
+
+function receipt(
+  doc: jsPDF,
+  config: Config,
+  title: string,
+  rows: [string, string][],
+  color: [number, number, number],
+  filename: string,
+) {
+  header(doc, config, title);
+  autoTable(doc, {
+    startY: 50,
+    head: [['Champ', 'Valeur']],
+    body: rows,
+    theme: 'striped',
+    headStyles: { fillColor: color, fontSize: 10 },
+    bodyStyles: { fontSize: 9 },
+    margin: { left: 14, right: 14 },
+  });
+  footer(doc);
+  doc.save(filename);
+}
+
+export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string) {
+  const doc = new jsPDF();
+  receipt(doc, config, "REÇU D'ENTRÉE", [
+    ['N° Reçu', `ENT-${entree.id.toString().padStart(6, '0')}`],
+    ['Date', formatDateShort(entree.date)],
+    ['Culte / Service', entree.culte],
+    ['Nature', categorieNom],
+    ['Caisse', entree.devise],
+    ['Montant', entree.devise === 'CDF' ? formatCdf(entree.montant_cdf) : formatUsd(entree.montant_usd)],
+    ['Note', entree.note || '—'],
+  ], [22, 101, 52], `recu_entree_${entree.id}.pdf`);
+}
+
+export function generateRecuSortie(config: Config, sortie: Sortie) {
+  const doc = new jsPDF();
+  receipt(doc, config, 'REÇU DE SORTIE', [
+    ['N° Reçu', `SORT-${sortie.id.toString().padStart(6, '0')}`],
+    ['Date', formatDateShort(sortie.date)],
+    ['Nature', sortie.nature],
+    ['Caisse', sortie.devise],
+    ['Montant', sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd)],
+    ['Description', sortie.description || '—'],
+    ["Nom de l'opérateur", sortie.nom_operateur],
+    ["Numéro de l'opérateur", sortie.numero_operateur || '—'],
+    ['Téléphone', sortie.telephone_operateur],
+    ['Bénéficiaire', sortie.beneficiaire || '—'],
+    ['N° bénéficiaire', sortie.numero_beneficiaire || '—'],
+  ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
+}
+
+export function generateRecuReversement(config: Config, reversement: Reversement, label: string) {
+  const doc = new jsPDF();
+  const rows: [string, string][] = [
+    ['N° Reçu', `REV-${reversement.id.toString().padStart(6, '0')}`],
+    ['Type', label],
+    ['Date', formatDateShort(reversement.date_reversement)],
+  ];
+  if (reversement.montant_cdf > 0) rows.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
+  if (reversement.montant_usd > 0) rows.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
+  rows.push([
+    ['Période', reversement.periode_debut && reversement.periode_fin
+      ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}`
+      : '—'][0],
+  ] as unknown as [string, string]);
+  receipt(doc, config, 'REÇU DE REVERSEMENT', rows, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
+}
+
+export interface ReportData {
+  title: string;
+  periodeLabel: string;
+  year: number;
+  entrees: EntreeWithCategorie[];
+  sorties: Sortie[];
+  reversements: Reversement[];
+  totalEntreesCdf: number;
+  totalEntreesUsd: number;
+  totalSortiesCdf: number;
+  totalSortiesUsd: number;
+  totalReversementsCdf: number;
+  totalReversementsUsd: number;
+  soldeCdf: number;
+  soldeUsd: number;
+}
+
+export function generateReport(config: Config, report: ReportData) {
+  const doc = new jsPDF();
+  header(doc, config, report.title);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Période : ${report.periodeLabel}`, 14, 46);
+  doc.text(`Exercice : ${report.year}`, 196, 46, { align: 'right' });
+
+  autoTable(doc, {
+    startY: 52,
+    head: [['Type', 'Nombre', 'Total CDF', 'Total USD']],
+    body: [
+      ['Entrées', String(report.entrees.length), formatCdf(report.totalEntreesCdf), formatUsd(report.totalEntreesUsd)],
+      ['Sorties', String(report.sorties.length), formatCdf(report.totalSortiesCdf), formatUsd(report.totalSortiesUsd)],
+      ['Reversements', String(report.reversements.length), formatCdf(report.totalReversementsCdf), formatUsd(report.totalReversementsUsd)],
+      ['Solde', '', formatCdf(report.soldeCdf), formatUsd(report.soldeUsd)],
+    ],
+    theme: 'striped',
+    headStyles: { fillColor: [22, 101, 52] },
+    margin: { left: 14, right: 14 },
+  });
+
+  const detailRows: string[][] = [
+    ...report.entrees.map((item) => [formatDateShort(item.date), 'Entrée', item.categorie_nom || item.culte, item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd)]),
+    ...report.sorties.map((item) => [formatDateShort(item.date), 'Sortie', item.nature, item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd)]),
+    ...report.reversements.map((item) => [formatDateShort(item.date_reversement), 'Reversement', item.type, `${formatCdf(item.montant_cdf)} / ${formatUsd(item.montant_usd)}`]),
+  ];
+
+  if (detailRows.length > 0) {
+    autoTable(doc, {
+      startY: 90,
+      head: [['Date', 'Type', 'Nature', 'Montant']],
+      body: detailRows,
+      theme: 'grid',
+      headStyles: { fillColor: [22, 101, 52] },
+      bodyStyles: { fontSize: 8 },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  footer(doc);
+  doc.save(`rapport_${report.periodeLabel.replace(/[^a-zA-Z0-9-]+/g, '_')}.pdf`);
+}
