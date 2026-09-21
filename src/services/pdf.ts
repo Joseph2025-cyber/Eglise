@@ -3,23 +3,45 @@ import autoTable from 'jspdf-autotable';
 import { formatCdf, formatUsd, formatDate, formatDateShort } from '@/utils/format';
 import type { Config, EntreeWithCategorie, Reversement, Sortie } from '@/types';
 
-function header(doc: jsPDF, config: Config, subtitle: string) {
-  doc.setFontSize(16);
+function officialHeader(doc: jsPDF, subtitle: string) {
+  const center = 105;
+  doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  doc.text(config.nom_communaute, 105, 18, { align: 'center' });
-  doc.setFontSize(11);
+  doc.setFontSize(18);
+  doc.text('EGLISE GLOIRE DE DIEU a.s.b.l', center, 14, { align: 'center' });
+
   doc.setFont('helvetica', 'normal');
-  doc.text(config.paroisse, 105, 25, { align: 'center' });
-  doc.setFontSize(13);
+  doc.setFontSize(8.5);
+  doc.text('Arrêté Ministériel N° 309/CAB/MIN/J/2006/du 18 Septembre 2006FG 96/4384', center, 21, { align: 'center' });
+
+  doc.setTextColor(30, 92, 170);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(10.5);
+  doc.text("« Ne t'ai-je pas dit que si tu crois tu verras la gloire de Dieu »", center, 29, { align: 'center' });
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.text('Jn 11 :40, 1Thess 5 :23, Ezechiel 17 :22-24, Habakuk 2 :1-4, Aggée 2 :1-9', center, 36, { align: 'center' });
+
+  doc.setTextColor(190, 35, 35);
   doc.setFont('helvetica', 'bold');
-  doc.text(subtitle, 105, 34, { align: 'center' });
-  doc.line(14, 38, 196, 38);
+  doc.setFontSize(13);
+  doc.text('PAROISSE DE KYESHERO', center, 45, { align: 'center' });
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(subtitle, center, 56, { align: 'center' });
+  doc.setDrawColor(150, 150, 150);
+  doc.line(14, 61, 196, 61);
 }
 
 function footer(doc: jsPDF) {
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
     doc.setPage(page);
+    doc.setTextColor(0, 0, 0);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.text(`Édité le ${formatDate(new Date())} - Page ${page}/${pages}`, 105, 290, { align: 'center' });
@@ -27,23 +49,16 @@ function footer(doc: jsPDF) {
   }
 }
 
-function receipt(
-  doc: jsPDF,
-  config: Config,
-  title: string,
-  rows: [string, string][],
-  color: [number, number, number],
-  filename: string,
-) {
-  header(doc, config, title);
+function receipt(doc: jsPDF, config: Config, title: string, rows: [string, string][], color: [number, number, number], filename: string) {
+  officialHeader(doc, title);
   autoTable(doc, {
-    startY: 50,
+    startY: 70,
     head: [['Champ', 'Valeur']],
     body: rows,
     theme: 'striped',
     headStyles: { fillColor: color, fontSize: 10 },
     bodyStyles: { fontSize: 9 },
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, bottom: 22 },
   });
   footer(doc);
   doc.save(filename);
@@ -73,7 +88,6 @@ export function generateRecuSortie(config: Config, sortie: Sortie) {
     ['Description', sortie.description || '—'],
     ["Nom de l'opérateur", sortie.nom_operateur],
     ["Numéro de l'opérateur", sortie.numero_operateur || '—'],
-    ['Téléphone', sortie.telephone_operateur],
     ['Bénéficiaire', sortie.beneficiaire || '—'],
     ['N° bénéficiaire', sortie.numero_beneficiaire || '—'],
   ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
@@ -88,11 +102,7 @@ export function generateRecuReversement(config: Config, reversement: Reversement
   ];
   if (reversement.montant_cdf > 0) rows.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
   if (reversement.montant_usd > 0) rows.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
-  rows.push([
-    ['Période', reversement.periode_debut && reversement.periode_fin
-      ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}`
-      : '—'][0],
-  ] as unknown as [string, string]);
+  rows.push(['Période', reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—']);
   receipt(doc, config, 'REÇU DE REVERSEMENT', rows, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
 }
 
@@ -115,14 +125,14 @@ export interface ReportData {
 
 export function generateReport(config: Config, report: ReportData) {
   const doc = new jsPDF();
-  header(doc, config, report.title);
+  officialHeader(doc, report.title);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Période : ${report.periodeLabel}`, 14, 46);
-  doc.text(`Exercice : ${report.year}`, 196, 46, { align: 'right' });
+  doc.text(`Période : ${report.periodeLabel}`, 14, 69);
+  doc.text(`Exercice : ${report.year}`, 196, 69, { align: 'right' });
 
   autoTable(doc, {
-    startY: 52,
+    startY: 76,
     head: [['Type', 'Nombre', 'Total CDF', 'Total USD']],
     body: [
       ['Entrées', String(report.entrees.length), formatCdf(report.totalEntreesCdf), formatUsd(report.totalEntreesUsd)],
@@ -132,24 +142,24 @@ export function generateReport(config: Config, report: ReportData) {
     ],
     theme: 'striped',
     headStyles: { fillColor: [22, 101, 52] },
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, bottom: 22 },
   });
 
   const detailRows: string[][] = [
-    ...report.entrees.map((item) => [formatDateShort(item.date), 'Entrée', item.categorie_nom || item.culte, item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd)]),
-    ...report.sorties.map((item) => [formatDateShort(item.date), 'Sortie', item.nature, item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd)]),
-    ...report.reversements.map((item) => [formatDateShort(item.date_reversement), 'Reversement', item.type, `${formatCdf(item.montant_cdf)} / ${formatUsd(item.montant_usd)}`]),
+    ...report.entrees.map((item) => [formatDateShort(item.date), 'Entrée', item.categorie_nom || item.culte, item.culte, item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd), item.note || '—']),
+    ...report.sorties.map((item) => [formatDateShort(item.date), 'Sortie', item.nature, item.beneficiaire || '—', item.devise === 'CDF' ? formatCdf(item.montant_cdf) : formatUsd(item.montant_usd), item.description || '—']),
+    ...report.reversements.map((item) => [formatDateShort(item.date_reversement), 'Reversement', item.type, item.periode_debut && item.periode_fin ? `${item.periode_debut} - ${item.periode_fin}` : '—', `${formatCdf(item.montant_cdf)} / ${formatUsd(item.montant_usd)}`, '—']),
   ];
 
   if (detailRows.length > 0) {
     autoTable(doc, {
-      startY: 90,
-      head: [['Date', 'Type', 'Nature', 'Montant']],
+      startY: 112,
+      head: [['Date', 'Type', 'Nature / Type', 'Bénéficiaire / Période', 'Montant', 'Détails']],
       body: detailRows,
       theme: 'grid',
       headStyles: { fillColor: [22, 101, 52] },
-      bodyStyles: { fontSize: 8 },
-      margin: { left: 14, right: 14 },
+      bodyStyles: { fontSize: 7.5 },
+      margin: { left: 14, right: 14, bottom: 22 },
     });
   }
 
