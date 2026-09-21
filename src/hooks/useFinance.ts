@@ -1,202 +1,156 @@
-import { useState, useCallback } from 'react';
-import { query, queryOne, execute } from '@/lib/database';
-import type { Entree, EntreeWithCategorie, Sortie, Reversement, Exercice } from '@/types';
+import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
+import { SCHEMA_SQL } from './schema';
 
-export function useFinance() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+let db: Database | null = null;
+let sqlPromise: Promise<Database> | null = null;
 
-  const addEntree = useCallback(async (data: Omit<Entree, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO entrees (date, culte, categorie_id, devise, montant, montant_cdf, montant_usd, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.culte, data.categorie_id, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.note],
-      );
-      return await queryOne<EntreeWithCategorie>(`SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.id = ?`, [id]);
-    } catch {
-      setError('Erreur lors de l’ajout de l’entrée');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+const DB_KEY = 'church_finance_db';
 
-  const addSortie = useCallback(async (data: Omit<Sortie, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO sorties (date, nature, devise, montant, montant_cdf, montant_usd, description, nom_operateur, telephone_operateur)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.nature, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.description, data.nom_operateur, data.telephone_operateur],
-      );
-      return await queryOne<Sortie>('SELECT * FROM sorties WHERE id = ?', [id]);
-    } catch {
-      setError('Erreur lors de l’ajout de la sortie');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const addReversement = useCallback(async (data: Omit<Reversement, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO reversements (type, montant_cdf, montant_usd, date_reversement, periode_debut, periode_fin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [data.type, data.montant_cdf, data.montant_usd, data.date_reversement, data.periode_debut, data.periode_fin],
-      );
-      return await queryOne<Reversement>('SELECT * FROM reversements WHERE id = ?', [id]);
-    } catch {
-      setError('Erreur lors de l’ajout du reversement');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const updateEntree = useCallback(async (id: number, data: Omit<Entree, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await execute('DELETE FROM entrees WHERE id = ?', [id]);
-      const newId = await execute(
-        `INSERT INTO entrees (date, culte, categorie_id, devise, montant, montant_cdf, montant_usd, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.culte, data.categorie_id, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.note],
-      );
-      return await queryOne<EntreeWithCategorie>(`SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.id = ?`, [newId]);
-    } catch {
-      setError('Erreur lors de la modification de l’entrée');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const updateSortie = useCallback(async (id: number, data: Omit<Sortie, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await execute('DELETE FROM sorties WHERE id = ?', [id]);
-      const newId = await execute(
-        `INSERT INTO sorties (date, nature, devise, montant, montant_cdf, montant_usd, description, nom_operateur, telephone_operateur)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.nature, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.description, data.nom_operateur, data.telephone_operateur],
-      );
-      return await queryOne<Sortie>('SELECT * FROM sorties WHERE id = ?', [newId]);
-    } catch {
-      setError('Erreur lors de la modification de la sortie');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const getEntrees = useCallback((start: string, end: string) =>
-    query<EntreeWithCategorie>(
-      'SELECT e.*, c.nom categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.date >= ? AND e.date <= ? ORDER BY e.date DESC',
-      [start, end],
-    ), []);
-
-  const getSorties = useCallback((start: string, end: string) =>
-    query<Sortie>('SELECT * FROM sorties WHERE date >= ? AND date <= ? ORDER BY date DESC', [start, end]), []);
-
-  const getReversements = useCallback((start: string, end: string) =>
-    query<Reversement>('SELECT * FROM reversements WHERE date_reversement >= ? AND date_reversement <= ? ORDER BY date_reversement DESC', [start, end]), []);
-
-  const getAllEntrees = useCallback(() =>
-    query<EntreeWithCategorie>('SELECT e.*, c.nom categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id ORDER BY e.date DESC, e.id DESC'), []);
-
-  const getAllSorties = useCallback(() =>
-    query<Sortie>('SELECT * FROM sorties ORDER BY date DESC, id DESC'), []);
-
-  const getAllReversements = useCallback(() =>
-    query<Reversement>('SELECT * FROM reversements ORDER BY date_reversement DESC, id DESC'), []);
-
-  const getExercice = useCallback((year: number) =>
-    queryOne<Exercice>('SELECT * FROM exercices WHERE annee = ?', [year]), []);
-
-  const getMonthlyTotals = useCallback(async (year: number) => {
-    const start = `${year}-01-01`;
-    const end = `${year}-12-31`;
-    const [entrees, sorties, reversements] = await Promise.all([
-      query<EntreeWithCategorie>(
-        `SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.date >= ? AND e.date <= ? ORDER BY e.date ASC`,
-        [start, end],
-      ),
-      query<Sortie>('SELECT * FROM sorties WHERE date >= ? AND date <= ? ORDER BY date ASC', [start, end]),
-      query<Reversement>('SELECT * FROM reversements WHERE date_reversement >= ? AND date_reversement <= ? ORDER BY date_reversement ASC', [start, end]),
-    ]);
-
-    const monthlyEntreesCdf = Array.from({ length: 12 }, () => 0);
-    const monthlyEntreesUsd = Array.from({ length: 12 }, () => 0);
-    const monthlySortiesCdf = Array.from({ length: 12 }, () => 0);
-    const monthlySortiesUsd = Array.from({ length: 12 }, () => 0);
-    const monthlyReversementsCdf = Array.from({ length: 12 }, () => 0);
-    const monthlyReversementsUsd = Array.from({ length: 12 }, () => 0);
-
-    for (const e of entrees) {
-      const month = new Date(`${e.date}T00:00:00`).getMonth();
-      monthlyEntreesCdf[month] += e.montant_cdf;
-      monthlyEntreesUsd[month] += e.montant_usd;
-    }
-
-    for (const s of sorties) {
-      const month = new Date(`${s.date}T00:00:00`).getMonth();
-      monthlySortiesCdf[month] += s.montant_cdf;
-      monthlySortiesUsd[month] += s.montant_usd;
-    }
-
-    for (const r of reversements) {
-      const month = new Date(`${r.date_reversement}T00:00:00`).getMonth();
-      monthlyReversementsCdf[month] += r.montant_cdf;
-      monthlyReversementsUsd[month] += r.montant_usd;
-    }
-
-    return { monthlyEntreesCdf, monthlyEntreesUsd, monthlySortiesCdf, monthlySortiesUsd, monthlyReversementsCdf, monthlyReversementsUsd, entrees, reversements, sorties };
-  }, []);
-
-  const deleteAllEntrees = useCallback(() => execute('DELETE FROM entrees WHERE id > 0'), []);
-  const deleteAllSorties = useCallback(() => execute('DELETE FROM sorties WHERE id > 0'), []);
-  const deleteAllReversements = useCallback(() => execute('DELETE FROM reversements WHERE id > 0'), []);
-  const deleteAllExercices = useCallback(() => execute('DELETE FROM exercices WHERE id > 0'), []);
-
-  const archiveExercice = useCallback(
-    (annee: number, totalEntrees: number, totalSorties: number, totalReversements: number, donnees: string) =>
-      execute(
-        'INSERT INTO exercices (annee, total_entrees, total_sorties, total_reversements, donnees) VALUES (?, ?, ?, ?, ?)',
-        [annee, totalEntrees, totalSorties, totalReversements, donnees],
-      ),
-    [],
-  );
-
-  return {
-    loading,
-    error,
-    addEntree,
-    addSortie,
-    addReversement,
-    updateEntree,
-    updateSortie,
-    getEntrees,
-    getSorties,
-    getReversements,
-    getAllEntrees,
-    getAllSorties,
-    getAllReversements,
-    getExercice,
-    getMonthlyTotals,
-    deleteAllEntrees,
-    deleteAllSorties,
-    deleteAllReversements,
-    deleteAllExercices,
-    archiveExercice,
-  };
+function isTauri(): boolean {
+  return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
 }
 
+function ensureEntreeColumns(database: Database): void {
+  const info = database.exec('PRAGMA table_info(entrees)');
+  const columns = new Set((info[0]?.values ?? []).map((row) => String(row[1])));
+
+  for (const [columnName, typeName] of [
+    ['beneficiaire', 'TEXT'],
+    ['numero_beneficiaire', 'TEXT'],
+  ] as const) {
+    if (!columns.has(columnName)) {
+      database.run(`ALTER TABLE entrees ADD COLUMN ${columnName} ${typeName}`);
+    }
+  }
+}
+
+async function loadFromStorage(): Promise<Uint8Array | null> {
+  if (isTauri()) {
+    try {
+      const { readFile } = await import('@tauri-apps/plugin-fs');
+      const { appDataDir } = await import('@tauri-apps/api/path');
+      const dir = await appDataDir();
+      const path = `${dir}/church_finance.sqlite`;
+      const data = await readFile(path);
+      return new Uint8Array(data);
+    } catch {
+      return null;
+    }
+  }
+  const stored = localStorage.getItem(DB_KEY);
+  if (!stored) return null;
+  const binary = atob(stored);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function saveToStorage(data: Uint8Array): Promise<void> {
+  if (isTauri()) {
+    try {
+      const { writeFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
+      const { appDataDir } = await import('@tauri-apps/api/path');
+      const dir = await appDataDir();
+      if (!(await exists(dir))) {
+        await mkdir(dir, { recursive: true });
+      }
+      const path = `${dir}/church_finance.sqlite`;
+      await writeFile(path, data);
+    } catch (err) {
+      console.error('Failed to persist DB to disk:', err);
+    }
+    return;
+  }
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < data.length; i += chunk) {
+    binary += String.fromCharCode(...data.subarray(i, i + chunk));
+  }
+  try {
+    localStorage.setItem(DB_KEY, btoa(binary));
+  } catch (err) {
+    console.error('Failed to persist DB to localStorage:', err);
+  }
+}
+
+export async function getDb(): Promise<Database> {
+  if (db) return db;
+  if (sqlPromise) return sqlPromise;
+
+  sqlPromise = (async () => {
+    const wasmUrl = new URL('sql.js/dist/sql-wasm.wasm', import.meta.url).href;
+    const SQL: SqlJsStatic = await initSqlJs({ locateFile: () => wasmUrl });
+
+    const existing = await loadFromStorage();
+    db = existing ? new SQL.Database(existing) : new SQL.Database();
+
+    db.run('PRAGMA foreign_keys = ON;');
+    db.run(SCHEMA_SQL);
+    ensureEntreeColumns(db);
+    await persist();
+
+    return db;
+  })();
+
+  return sqlPromise;
+}
+
+export async function persist(): Promise<void> {
+  if (!db) return;
+  const data = db.export();
+  await saveToStorage(data);
+}
+
+function bindParams(stmt: import('sql.js').Statement, params: unknown[]): void {
+  stmt.bind(params.map((p) => {
+    if (p === null || p === undefined) return null;
+    if (typeof p === 'number') return p;
+    return String(p);
+  }) as never[]);
+}
+
+export async function query<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const database = await getDb();
+  const stmt = database.prepare(sql);
+  bindParams(stmt, params);
+  const results: T[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as T);
+  }
+  stmt.free();
+  return results;
+}
+
+export async function queryOne<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<T | null> {
+  const rows = await query<T>(sql, params);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+export async function execute(sql: string, params: unknown[] = []): Promise<number> {
+  const database = await getDb();
+  const stmt = database.prepare(sql);
+  bindParams(stmt, params);
+  stmt.step();
+  stmt.free();
+  const result = database.exec('SELECT last_insert_rowid() as id');
+  const id = result.length > 0 ? (result[0].values[0][0] as number) : 0;
+  await persist();
+  return id;
+}
+
+export async function executeMany(sql: string, paramsList: unknown[][] = []): Promise<void> {
+  const database = await getDb();
+  for (const params of paramsList) {
+    const stmt = database.prepare(sql);
+    bindParams(stmt, params);
+    stmt.step();
+    stmt.free();
+  }
+  await persist();
+}

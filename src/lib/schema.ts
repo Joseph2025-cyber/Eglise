@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS entrees (
   date TEXT NOT NULL,
   culte TEXT NOT NULL,
   categorie_id INTEGER NOT NULL REFERENCES categories(id),
+  beneficiaire TEXT,
+  numero_beneficiaire TEXT,
   devise TEXT NOT NULL DEFAULT 'CDF' CHECK (devise IN ('CDF', 'USD')),
   montant INTEGER NOT NULL CHECK (montant >= 0),
   montant_cdf INTEGER NOT NULL DEFAULT 0,

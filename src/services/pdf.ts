@@ -1,68 +1,171 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { formatDual, formatCdf, formatUsd, formatDateShort, formatDate, MONTH_NAMES } from '@/utils/format';
-import type { EntreeWithCategorie, Sortie, Reversement, Config } from '@/types';
+import { useState } from 'react';
+import { ArrowLeft, Save, X, Calendar, Tag, DollarSign, FileText, User, CheckCircle2 } from 'lucide-react';
+import type { Config, Categorie, Devise } from '@/types';
+import { CULTE_OPTIONS } from '@/types';
+import { useFinance } from '@/hooks/useFinance';
+import { todayISO, formatDual } from '@/utils/format';
+import { generateRecuEntree } from '@/services/pdf';
 
-function header(doc: jsPDF, config: Config, subtitle: string) {
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text(config.nom_communaute, 105, 18, { align: 'center' });
-  doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.text(config.paroisse, 105, 25, { align: 'center' });
-  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.text(subtitle, 105, 34, { align: 'center' });
-  doc.setLineWidth(0.5); doc.line(14, 38, 196, 38);
+interface EntryFormProps {
+  config: Config;
+  categories: Categorie[];
+  onBack: () => void;
 }
-function footer(doc: jsPDF) {
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Édité le ${formatDate(new Date())} - Page ${i}/${pageCount}`, 105, 290, { align: 'center' });
-    doc.text('Approuvé par le pasteur Kameya Kaboyi Josué', 105, 296, { align: 'center' });
+
+export function EntryForm({ config, categories, onBack }: EntryFormProps) {
+  const { addEntree } = useFinance();
+  const [date, setDate] = useState(todayISO());
+  const [culte, setCulte] = useState<string>(CULTE_OPTIONS[0]);
+  const [categorieId, setCategorieId] = useState<number>(categories[0]?.id || 0);
+  const [beneficiaire, setBeneficiaire] = useState('');
+  const [numeroBeneficiaire, setNumeroBeneficiaire] = useState('');
+  const [devise, setDevise] = useState<Devise>('CDF');
+  const [montant, setMontant] = useState('');
+  const [note, setNote] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const computeAmounts = () => {
+    const m = parseInt(montant, 10) || 0;
+    if (devise === 'CDF') return { montant_cdf: m, montant_usd: 0 };
+    return { montant_cdf: 0, montant_usd: m };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const montantNum = parseInt(montant, 10);
+    if (!montantNum || montantNum <= 0) {
+      setError('Veuillez entrer un montant valide');
+      return;
+    }
+    const { montant_cdf, montant_usd } = computeAmounts();
+    const result = await addEntree({
+      date,
+      culte,
+      categorie_id: categorieId,
+      beneficiaire: beneficiaire.trim() || null,
+      numero_beneficiaire: numeroBeneficiaire.trim() || null,
+      devise,
+      montant: montantNum,
+      montant_cdf,
+      montant_usd,
+      note: note || null,
+    });
+    if (result) {
+      const catNom = categories.find((c) => c.id === categorieId)?.nom || '';
+      generateRecuEntree(config, result, catNom);
+      setSuccess(true);
+      setTimeout(() => onBack(), 1800);
+    } else {
+      setError("Erreur lors de l'enregistrement");
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center animate-[fadeIn_0.3s_ease]">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-100 mb-4">
+            <CheckCircle2 className="w-12 h-12 text-emerald-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800">Entrée enregistrée</h3>
+          <p className="text-gray-500 mt-1">Le reçu PDF a été téléchargé avec succès</p>
+        </div>
+      </div>
+    );
   }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
+          <ArrowLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        <h1 className="text-2xl font-bold text-gray-800">Enregistrer une Entrée</h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <Calendar className="w-4 h-4 text-emerald-600" /> Date
+          </label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <Tag className="w-4 h-4 text-emerald-600" /> Culte / Service
+          </label>
+          <select value={culte} onChange={(e) => setCulte(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+            {CULTE_OPTIONS.map((c) => (<option key={c} value={c}>{c}</option>))}
+          </select>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <Tag className="w-4 h-4 text-emerald-600" /> Nature de la recette
+          </label>
+          <select value={categorieId} onChange={(e) => setCategorieId(parseInt(e.target.value, 10))} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+            {categories.map((c) => (<option key={c.id} value={c.id}>{c.nom}</option>))}
+          </select>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <User className="w-4 h-4 text-emerald-600" /> Bénéficiaire
+          </label>
+          <input type="text" value={beneficiaire} onChange={(e) => setBeneficiaire(e.target.value)} placeholder="Nom du bénéficiaire" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <FileText className="w-4 h-4 text-emerald-600" /> N° Bénéficiaire
+          </label>
+          <input type="text" value={numeroBeneficiaire} onChange={(e) => setNumeroBeneficiaire(e.target.value)} placeholder="Numéro du bénéficiaire" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <DollarSign className="w-4 h-4 text-emerald-600" /> Devise
+          </label>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setDevise('CDF')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'CDF' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+              Franc Congolais (CDF)
+            </button>
+            <button type="button" onClick={() => setDevise('USD')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'USD' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+              Dollar Américain (USD)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant ({devise})
+          </label>
+          <input type="number" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder="0" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-lg font-semibold" />
+          {montant && parseInt(montant, 10) > 0 && (
+            <p className="text-sm text-emerald-600 mt-1 font-medium">{formatDual(...Object.values(computeAmounts()) as [number, number])}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <FileText className="w-4 h-4 text-emerald-600" /> Note (optionnel)
+          </label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none" placeholder="Note libre..." />
+        </div>
+
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>}
+
+        <div className="flex gap-3 pt-2">
+          <button type="submit" className="flex-1 py-3 px-6 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2">
+            <Save className="w-5 h-5" /> Enregistrer
+          </button>
+          <button type="button" onClick={onBack} className="flex-1 py-3 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all flex items-center justify-center gap-2">
+            <X className="w-5 h-5" /> Annuler
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
-function receipt(doc: jsPDF, config: Config, title: string, rows: [string, string][], color: [number, number, number], filename: string) {
-  header(doc, config, title);
-  autoTable(doc, { startY: 50, head: [['Champ', 'Valeur']], body: rows, theme: 'striped', headStyles: { fillColor: color, fontSize: 11 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
-  footer(doc); doc.save(filename);
-}
-export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string) {
-  const doc = new jsPDF();
-  receipt(doc, config, "REÇU D'ENTRÉE", [
-    ['N° Reçu', `ENT-${entree.id.toString().padStart(6, '0')}`], ['Date', formatDateShort(entree.date)], ['Culte / Service', entree.culte], ['Catégorie', categorieNom], ['Caisse', entree.devise], ['Montant', entree.devise === 'CDF' ? formatCdf(entree.montant_cdf) : formatUsd(entree.montant_usd)], ['Note', entree.note || '—'],
-  ], [22, 101, 52], `recu_entree_${entree.id}.pdf`);
-}
-export function generateRecuSortie(config: Config, sortie: Sortie) {
-  const doc = new jsPDF();
-  receipt(doc, config, 'REÇU DE SORTIE', [
-    ['N° Reçu', `SORT-${sortie.id.toString().padStart(6, '0')}`], ['Date', formatDateShort(sortie.date)], ['Nature du décaissement', sortie.nature], ['Caisse', sortie.devise], ['Montant', sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd)], ['Description', sortie.description || '—'], ['Opérateur', sortie.nom_operateur], ['Téléphone', sortie.telephone_operateur],
-  ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
-}
-export function generateRecuReversement(config: Config, reversement: Reversement, label: string) {
-  const doc = new jsPDF();
-  const lines: [string, string][] = [['N° Reçu', `REV-${reversement.id.toString().padStart(6, '0')}`], ['Type', label], ['Date', formatDateShort(reversement.date_reversement)]];
-  if (reversement.montant_cdf > 0) lines.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
-  if (reversement.montant_usd > 0) lines.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
-  lines.push(['Période', reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—']);
-  receipt(doc, config, 'REÇU DE REVERSEMENT', lines, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
-}
-interface ReportData { title: string; periodeLabel: string; year: number; entrees: EntreeWithCategorie[]; sorties: Sortie[]; reversements: Reversement[]; totalEntreesCdf: number; totalEntreesUsd: number; totalSortiesCdf: number; totalSortiesUsd: number; totalReversementsCdf: number; totalReversementsUsd: number; soldeCdf: number; soldeUsd: number; }
-export function generateReport(config: Config, data: ReportData) {
-  const doc = new jsPDF();
-  header(doc, config, data.title);
-  doc.setFontSize(10); doc.setFont('helvetica', 'italic');
-  doc.text(`Période: ${data.periodeLabel}`, 105, 44, { align: 'center' });
-  doc.text(`Année: ${data.year}`, 105, 49, { align: 'center' });
-  let y = 56;
-  const parCategorieCdf = new Map<string, number>();
-  const parCategorieUsd = new Map<string, number>();
-  for (const e of data.entrees) { const nom = e.categorie_nom || '—'; parCategorieCdf.set(nom, (parCategorieCdf.get(nom) || 0) + e.montant_cdf); parCategorieUsd.set(nom, (parCategorieUsd.get(nom) || 0) + e.montant_usd); }
-  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('ENTRÉES', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Date', 'Culte', 'Catégorie', 'Caisse', 'Montant', 'Note']], body: data.entrees.map((e) => [formatDateShort(e.date), e.culte, e.categorie_nom || '—', e.devise, e.devise === 'CDF' ? formatCdf(e.montant_cdf) : formatUsd(e.montant_usd), e.note || '—']), foot: [['', '', 'Total Entrées', '', `${formatCdf(data.totalEntreesCdf)} | ${formatUsd(data.totalEntreesUsd)}`, '']], theme: 'striped', headStyles: { fillColor: [22, 101, 52], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [22, 101, 52], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.text('Résumé par catégorie', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Catégorie', 'Caisse CDF', 'Caisse USD']], body: Array.from(parCategorieCdf.entries()).map(([nom]) => [nom, formatCdf(parCategorieCdf.get(nom) || 0), formatUsd(parCategorieUsd.get(nom) || 0)]), theme: 'striped', headStyles: { fillColor: [22,101,52], fontSize: 9 }, bodyStyles: { fontSize: 8 }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SORTIES', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Date', 'Nature', 'Caisse', 'Montant', 'Description', 'Opérateur']], body: data.sorties.map((s) => [formatDateShort(s.date), s.nature, s.devise, s.devise === 'CDF' ? formatCdf(s.montant_cdf) : formatUsd(s.montant_usd), s.description || '—', `${s.nom_operateur} (${s.telephone_operateur})`]), foot: [['', 'Total Sorties', '', `${formatCdf(data.totalSortiesCdf)} | ${formatUsd(data.totalSortiesUsd)}`, '', '']], theme: 'striped', headStyles: { fillColor: [185,28,28], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [185,28,28], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; if (data.reversements.length > 0) { doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('REVERSEMENTS', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Date', 'Type', 'Caisse CDF', 'Caisse USD', 'Période']], body: data.reversements.map((r) => [formatDateShort(r.date_reversement), r.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)', formatCdf(r.montant_cdf), formatUsd(r.montant_usd), r.periode_debut && r.periode_fin ? `${formatDateShort(r.periode_debut)} - ${formatDateShort(r.periode_fin)}` : '—']), foot: [['', 'Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd), '']], theme: 'striped', headStyles: { fillColor: [180,83,9], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [180,83,9], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } }); y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; }
-  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SYNTHÈSE', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Indicateur', 'Caisse CDF', 'Caisse USD']], body: [['Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd)], ['Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd)], ['Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd)], ['Solde Net en Caisse', formatCdf(data.soldeCdf), formatUsd(data.soldeUsd)]], theme: 'grid', headStyles: { fillColor: [30,58,95], fontSize: 10 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
-  footer(doc); doc.save(`rapport_${data.title.replace(/\s/g, '_').toLowerCase()}.pdf`);
-}
-export { MONTH_NAMES };

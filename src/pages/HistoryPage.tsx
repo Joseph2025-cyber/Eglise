@@ -1,275 +1,76 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, FileText, Download, Calendar, ChevronRight, CheckCircle2, PencilLine, Trash2, Clock3, Search } from 'lucide-react';
-import type { Config, EntreeWithCategorie, Sortie } from '@/types';
-import { useFinance } from '@/hooks/useFinance';
-import { formatDateShort, todayISO } from '@/utils/format';
-import { generateRecuEntree, generateRecuSortie } from '@/services/pdf';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { formatDual, formatCdf, formatUsd, formatDateShort, formatDate, MONTH_NAMES } from '@/utils/format';
+import type { EntreeWithCategorie, Sortie, Reversement, Config } from '@/types';
 
-interface HistoryPageProps { config: Config; onBack: () => void; }
-
-type FilterType = 'day' | 'week' | 'month' | 'all';
-
-function isModifiable(createdAt: string | null | undefined): boolean {
-  if (!createdAt) return false;
-  const created = new Date(createdAt).getTime();
-  const now = Date.now();
-  return now - created <= 24 * 60 * 60 * 1000;
+function header(doc: jsPDF, config: Config, subtitle: string) {
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text(config.nom_communaute, 105, 18, { align: 'center' });
+  doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.text(config.paroisse, 105, 25, { align: 'center' });
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.text(subtitle, 105, 34, { align: 'center' });
+  doc.setLineWidth(0.5); doc.line(14, 38, 196, 38);
 }
-
-function dateFilterRange(filter: FilterType) {
-  const now = new Date();
-  const start = new Date(now); 
-  if (filter === 'day') {
-    start.setHours(0, 0, 0, 0);
-    return { start: start.toISOString().split('T')[0], end: todayISO() };
+function footer(doc: jsPDF) {
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Édité le ${formatDate(new Date())} - Page ${i}/${pageCount}`, 105, 290, { align: 'center' });
+    doc.text('Approuvé par le pasteur Kameya Kaboyi Josué', 105, 296, { align: 'center' });
   }
-  if (filter === 'week') {
-    start.setDate(now.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
-    return { start: start.toISOString().split('T')[0], end: todayISO() };
-  }
-  if (filter === 'month') {
-    start.setDate(1);
-    start.setHours(0, 0, 0, 0);
-    return { start: start.toISOString().split('T')[0], end: todayISO() };
-  }
-  return { start: '2000-01-01', end: todayISO() };
 }
-
-export function HistoryPage({ config, onBack }: HistoryPageProps) {
-  const { getAllEntrees, getAllSorties, updateEntree, updateSortie } = useFinance();
-  const [activeTab, setActiveTab] = useState<'entrees' | 'sorties'>('entrees');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [entrees, setEntrees] = useState<EntreeWithCategorie[]>([]);
-  const [sorties, setSorties] = useState<Sortie[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<{ type: 'entree' | 'sortie'; id: number } | null>(null);
-  const [editForm, setEditForm] = useState<any>(null);
-
-  const loadData = async () => {
-    setLoading(true);
-    const [allEntrees, allSorties] = await Promise.all([getAllEntrees(), getAllSorties()]);
-    const range = dateFilterRange(filter);
-    const filteredEntrees = allEntrees.filter((e) => e.date >= range.start && e.date <= range.end);
-    const filteredSorties = allSorties.filter((s) => s.date >= range.start && s.date <= range.end);
-    setEntrees(filteredEntrees);
-    setSorties(filteredSorties);
-    setLoading(false);
-  };
-
-  useEffect(() => { void loadData(); }, [filter]);
-
-  const openEdit = (type: 'entree' | 'sortie', item: EntreeWithCategorie | Sortie) => {
-    if (type === 'entree') {
-      setEditing({ type, id: item.id });
-      setEditForm({
-        date: item.date,
-        culte: item.culte,
-        categorie_id: item.categorie_id,
-        devise: item.devise,
-        montant: item.montant,
-        note: item.note || '',
-      });
-      return;
-    }
-    setEditing({ type, id: item.id });
-    setEditForm({
-      date: item.date,
-      nature: item.nature,
-      devise: item.devise,
-      montant: item.montant,
-      description: item.description || '',
-      nom_operateur: item.nom_operateur,
-      telephone_operateur: item.telephone_operateur,
-    });
-  };
-
-  const saveEdit = async () => {
-    if (!editing || !editForm) return;
-    if (editing.type === 'entree') {
-      const updated = await updateEntree(editing.id, {
-        date: editForm.date,
-        culte: editForm.culte,
-        categorie_id: Number(editForm.categorie_id),
-        devise: editForm.devise,
-        montant: Number(editForm.montant),
-        montant_cdf: editForm.devise === 'CDF' ? Number(editForm.montant) : 0,
-        montant_usd: editForm.devise === 'USD' ? Number(editForm.montant) : 0,
-        note: editForm.note || null,
-      });
-      if (updated) {
-        generateRecuEntree(config, updated, updated.categorie_nom || 'Entrée');
-      }
-    } else {
-      const updated = await updateSortie(editing.id, {
-        date: editForm.date,
-        nature: editForm.nature,
-        devise: editForm.devise,
-        montant: Number(editForm.montant),
-        montant_cdf: editForm.devise === 'CDF' ? Number(editForm.montant) : 0,
-        montant_usd: editForm.devise === 'USD' ? Number(editForm.montant) : 0,
-        description: editForm.description || null,
-        nom_operateur: editForm.nom_operateur,
-        telephone_operateur: editForm.telephone_operateur,
-      });
-      if (updated) {
-        generateRecuSortie(config, updated);
-      }
-    }
-    setEditing(null);
-    setEditForm(null);
-    await loadData();
-  };
-
-  const displayed = activeTab === 'entrees' ? entrees : sorties;
-
-  return (
-    <div className="max-w-5xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </button>
-        <h1 className="text-2xl font-bold text-gray-800">Historique</h1>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
-        <div className="flex flex-wrap gap-3">
-          <button onClick={() => setActiveTab('entrees')} className={`px-4 py-2 rounded-xl font-semibold ${activeTab === 'entrees' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-            Entrées
-          </button>
-          <button onClick={() => setActiveTab('sorties')} className={`px-4 py-2 rounded-xl font-semibold ${activeTab === 'sorties' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-            Sorties
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {[
-            { key: 'day', label: 'Du jour' },
-            { key: 'week', label: 'De la semaine' },
-            { key: 'month', label: 'Du mois' },
-            { key: 'all', label: 'Tous' },
-          ].map((item) => (
-            <button key={item.key} onClick={() => setFilter(item.key as FilterType)} className={`px-3 py-2 rounded-lg text-sm font-medium ${filter === item.key ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600" /></div>
-      ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left">
-                <tr>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Date</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">{activeTab === 'entrees' ? 'Catégorie' : 'Nature'}</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Devise</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Montant</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayed.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">Aucune donnée pour cette période.</td>
-                  </tr>
-                )}
-                {activeTab === 'entrees' ? entrees.map((item) => (
-                  <tr key={item.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3">{formatDateShort(item.date)}</td>
-                    <td className="px-4 py-3">{item.categorie_nom || '—'}</td>
-                    <td className="px-4 py-3">{item.devise}</td>
-                    <td className="px-4 py-3 font-semibold">{item.montant}</td>
-                    <td className="px-4 py-3">
-                      {isModifiable(item.created_at) ? (
-                        <button onClick={() => openEdit('entree', item)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
-                          <PencilLine className="w-4 h-4" /> Modifier
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 inline-flex items-center gap-1"><Clock3 className="w-4 h-4" />Lecture seule</span>
-                      )}
-                    </td>
-                  </tr>
-                )) : sorties.map((item) => (
-                  <tr key={item.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3">{formatDateShort(item.date)}</td>
-                    <td className="px-4 py-3">{item.nature}</td>
-                    <td className="px-4 py-3">{item.devise}</td>
-                    <td className="px-4 py-3 font-semibold">{item.montant}</td>
-                    <td className="px-4 py-3">
-                      {isModifiable(item.created_at) ? (
-                        <button onClick={() => openEdit('sortie', item)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">
-                          <PencilLine className="w-4 h-4" /> Modifier
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 inline-flex items-center gap-1"><Clock3 className="w-4 h-4" />Lecture seule</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {editing && editForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Modifier la transaction</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-              </div>
-              {editing.type === 'entree' ? (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Culte</label>
-                    <input type="text" value={editForm.culte} onChange={(e) => setEditForm({ ...editForm, culte: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
-                    <input type="number" value={editForm.categorie_id} onChange={(e) => setEditForm({ ...editForm, categorie_id: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nature</label>
-                    <input type="text" value={editForm.nature} onChange={(e) => setEditForm({ ...editForm, nature: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Opérateur</label>
-                    <input type="text" value={editForm.nom_operateur} onChange={(e) => setEditForm({ ...editForm, nom_operateur: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-                  </div>
-                </>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Devise</label>
-                <select value={editForm.devise} onChange={(e) => setEditForm({ ...editForm, devise: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2">
-                  <option value="CDF">CDF</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Montant</label>
-                <input type="number" step="0.01" value={editForm.montant} onChange={(e) => setEditForm({ ...editForm, montant: e.target.value })} className="w-full border border-gray-200 rounded-xl px-3 py-2" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={saveEdit} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold">Enregistrer</button>
-              <button onClick={() => { setEditing(null); setEditForm(null); }} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-semibold">Annuler</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function receipt(doc: jsPDF, config: Config, title: string, rows: [string, string][], color: [number, number, number], filename: string) {
+  header(doc, config, title);
+  autoTable(doc, { startY: 50, head: [['Champ', 'Valeur']], body: rows, theme: 'striped', headStyles: { fillColor: color, fontSize: 11 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
+  footer(doc); doc.save(filename);
 }
-
+export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string) {
+  const doc = new jsPDF();
+  receipt(doc, config, "REÇU D'ENTRÉE", [
+    ['N° Reçu', `ENT-${entree.id.toString().padStart(6, '0')}`],
+    ['Date', formatDateShort(entree.date)],
+    ['Culte / Service', entree.culte],
+    ['Catégorie', categorieNom],
+    ['Bénéficiaire', entree.beneficiaire || '—'],
+    ['N° Bénéficiaire', entree.numero_beneficiaire || '—'],
+    ['Caisse', entree.devise],
+    ['Montant', entree.devise === 'CDF' ? formatCdf(entree.montant_cdf) : formatUsd(entree.montant_usd)],
+    ['Note', entree.note || '—'],
+  ], [22, 101, 52], `recu_entree_${entree.id}.pdf`);
+}
+export function generateRecuSortie(config: Config, sortie: Sortie) {
+  const doc = new jsPDF();
+  receipt(doc, config, 'REÇU DE SORTIE', [
+    ['N° Reçu', `SORT-${sortie.id.toString().padStart(6, '0')}`], ['Date', formatDateShort(sortie.date)], ['Nature du décaissement', sortie.nature], ['Caisse', sortie.devise], ['Montant', sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd)], ['Description', sortie.description || '—'], ['Opérateur', sortie.nom_operateur], ['Téléphone', sortie.telephone_operateur],
+  ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
+}
+export function generateRecuReversement(config: Config, reversement: Reversement, label: string) {
+  const doc = new jsPDF();
+  const lines: [string, string][] = [['N° Reçu', `REV-${reversement.id.toString().padStart(6, '0')}`], ['Type', label], ['Date', formatDateShort(reversement.date_reversement)]];
+  if (reversement.montant_cdf > 0) lines.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
+  if (reversement.montant_usd > 0) lines.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
+  lines.push(['Période', reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—']);
+  receipt(doc, config, 'REÇU DE REVERSEMENT', lines, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
+}
+interface ReportData { title: string; periodeLabel: string; year: number; entrees: EntreeWithCategorie[]; sorties: Sortie[]; reversements: Reversement[]; totalEntreesCdf: number; totalEntreesUsd: number; totalSortiesCdf: number; totalSortiesUsd: number; totalReversementsCdf: number; totalReversementsUsd: number; soldeCdf: number; soldeUsd: number; }
+export function generateReport(config: Config, data: ReportData) {
+  const doc = new jsPDF();
+  header(doc, config, data.title);
+  doc.setFontSize(10); doc.setFont('helvetica', 'italic');
+  doc.text(`Période: ${data.periodeLabel}`, 105, 44, { align: 'center' });
+  doc.text(`Année: ${data.year}`, 105, 49, { align: 'center' });
+  let y = 56;
+  const parCategorieCdf = new Map<string, number>();
+  const parCategorieUsd = new Map<string, number>();
+  for (const e of data.entrees) { const nom = e.categorie_nom || '—'; parCategorieCdf.set(nom, (parCategorieCdf.get(nom) || 0) + e.montant_cdf); parCategorieUsd.set(nom, (parCategorieUsd.get(nom) || 0) + e.montant_usd); }
+  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('ENTRÉES', 14, y); y += 4;
+  autoTable(doc, { startY: y, head: [['Date', 'Culte', 'Catégorie', 'Bénéficiaire', 'N° Bénéficiaire', 'Caisse', 'Montant', 'Note']], body: data.entrees.map((e) => [formatDateShort(e.date), e.culte, e.categorie_nom || '—', e.beneficiaire || '—', e.numero_beneficiaire || '—', e.devise, e.devise === 'CDF' ? formatCdf(e.montant_cdf) : formatUsd(e.montant_usd), e.note || '—']), theme: 'striped', headStyles: { fillColor: [22, 101, 52], fontSize: 8 }, bodyStyles: { fontSize: 7 }, margin: { left: 14, right: 14 } });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.text('Résumé par catégorie', 14, y); y += 4;
+  autoTable(doc, { startY: y, head: [['Catégorie', 'Caisse CDF', 'Caisse USD']], body: Array.from(parCategorieCdf.entries()).map(([nom]) => [nom, formatCdf(parCategorieCdf.get(nom) || 0), formatUsd(parCategorieUsd.get(nom) || 0)]), theme: 'striped', headStyles: { fillColor: [22,101,52], fontSize: 9 }, bodyStyles: { fontSize: 8 }, margin: { left: 14, right: 14 } });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SORTIES', 14, y); y += 4;
+  autoTable(doc, { startY: y, head: [['Date', 'Nature', 'Caisse', 'Montant', 'Description', 'Opérateur']], body: data.sorties.map((s) => [formatDateShort(s.date), s.nature, s.devise, s.devise === 'CDF' ? formatCdf(s.montant_cdf) : formatUsd(s.montant_usd), s.description || '—', `${s.nom_operateur} (${s.telephone_operateur})`]), foot: [['', 'Total Sorties', '', `${formatCdf(data.totalSortiesCdf)} | ${formatUsd(data.totalSortiesUsd)}`, '', '']], theme: 'striped', headStyles: { fillColor: [185,28,28], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [185,28,28], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; if (data.reversements.length > 0) { doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('REVERSEMENTS', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Date', 'Type', 'Caisse CDF', 'Caisse USD', 'Période']], body: data.reversements.map((r) => [formatDateShort(r.date_reversement), r.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)', formatCdf(r.montant_cdf), formatUsd(r.montant_usd), r.periode_debut && r.periode_fin ? `${formatDateShort(r.periode_debut)} - ${formatDateShort(r.periode_fin)}` : '—']), foot: [['', 'Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd), '']], theme: 'striped', headStyles: { fillColor: [180,83,9], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [180,83,9], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } }); y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; }
+  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SYNTHÈSE', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Indicateur', 'Caisse CDF', 'Caisse USD']], body: [['Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd)], ['Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd)], ['Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd)], ['Solde Net en Caisse', formatCdf(data.soldeCdf), formatUsd(data.soldeUsd)]], theme: 'grid', headStyles: { fillColor: [30,58,95], fontSize: 10 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
+  footer(doc); doc.save(`rapport_${data.title.replace(/\s/g, '_').toLowerCase()}.pdf`);
+}
+export { MONTH_NAMES };
