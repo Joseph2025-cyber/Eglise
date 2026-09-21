@@ -1,26 +1,35 @@
 import type { Devise } from '@/types';
 
+/**
+ * Format an amount with an explicit dot as the thousands separator.
+ *
+ * Do not rely on Intl.NumberFormat('fr-FR') here: it returns a narrow
+ * no-break space as the group separator. Some PDF/font combinations render
+ * that character as a slash, producing values such as `100/000`.
+ */
+function formatInteger(amount: number): string {
+  const rounded = Math.round(Number.isFinite(amount) ? amount : 0);
+  return String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 export function formatCurrency(amount: number, devise: Devise = 'CDF'): string {
-  const formatted = new Intl.NumberFormat('fr-FR').format(Math.round(amount));
-  return `${formatted} ${devise}`;
+  return `${formatInteger(amount)} ${devise}`;
 }
 
 export function formatDual(cdf: number, usd: number): string {
-  const cdfStr = new Intl.NumberFormat('fr-FR').format(Math.round(cdf));
-  const usdStr = new Intl.NumberFormat('fr-FR').format(Math.round(usd));
-  return `${cdfStr} CDF | ${usdStr} USD`;
+  return `${formatInteger(cdf)} CDF | ${formatInteger(usd)} USD`;
 }
 
 export function formatCdf(cdf: number): string {
-  return `${new Intl.NumberFormat('fr-FR').format(Math.round(cdf))} CDF`;
+  return `${formatInteger(cdf)} CDF`;
 }
 
 export function formatUsd(usd: number): string {
-  return `${new Intl.NumberFormat('fr-FR').format(Math.round(usd))} USD`;
+  return `${formatInteger(usd)} USD`;
 }
 
 export function formatNumber(amount: number): string {
-  return new Intl.NumberFormat('fr-FR').format(Math.round(amount));
+  return formatInteger(amount);
 }
 
 export function formatDate(date: string | Date): string {
