@@ -5,9 +5,9 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "fs:allow-read-binary-file",
-    "fs:allow-write-binary-file",
-    "fs:allow-app-data-dir-recursive",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:scope-appdata",
     "dialog:allow-save",
     "dialog:allow-open"
   ]
