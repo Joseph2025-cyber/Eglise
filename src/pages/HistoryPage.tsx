@@ -1,76 +1,58 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { formatDual, formatCdf, formatUsd, formatDateShort, formatDate, MONTH_NAMES } from '@/utils/format';
-import type { EntreeWithCategorie, Sortie, Reversement, Config } from '@/types';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, PencilLine, Clock3 } from 'lucide-react';
+import type { Config, EntreeWithCategorie, Sortie } from '@/types';
+import { useFinance } from '@/hooks/useFinance';
+import { formatDateShort, todayISO } from '@/utils/format';
+import { generateRecuEntree, generateRecuSortie } from '@/services/pdf';
 
-function header(doc: jsPDF, config: Config, subtitle: string) {
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text(config.nom_communaute, 105, 18, { align: 'center' });
-  doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.text(config.paroisse, 105, 25, { align: 'center' });
-  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.text(subtitle, 105, 34, { align: 'center' });
-  doc.setLineWidth(0.5); doc.line(14, 38, 196, 38);
+interface HistoryPageProps { config: Config; onBack: () => void; }
+type FilterType = 'day' | 'week' | 'month' | 'all';
+
+function isModifiable(createdAt: string | null | undefined): boolean {
+  return Boolean(createdAt && Date.now() - new Date(createdAt).getTime() <= 24 * 60 * 60 * 1000);
 }
-function footer(doc: jsPDF) {
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Édité le ${formatDate(new Date())} - Page ${i}/${pageCount}`, 105, 290, { align: 'center' });
-    doc.text('Approuvé par le pasteur Kameya Kaboyi Josué', 105, 296, { align: 'center' });
-  }
+
+function dateFilterRange(filter: FilterType) {
+  const today = new Date();
+  const end = todayISO();
+  const start = new Date(today);
+  if (filter === 'day') start.setHours(0, 0, 0, 0);
+  if (filter === 'week') start.setDate(today.getDate() - 6);
+  if (filter === 'month') start.setDate(1);
+  return { start: filter === 'all' ? '2000-01-01' : start.toISOString().slice(0, 10), end };
 }
-function receipt(doc: jsPDF, config: Config, title: string, rows: [string, string][], color: [number, number, number], filename: string) {
-  header(doc, config, title);
-  autoTable(doc, { startY: 50, head: [['Champ', 'Valeur']], body: rows, theme: 'striped', headStyles: { fillColor: color, fontSize: 11 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
-  footer(doc); doc.save(filename);
+
+export function HistoryPage({ config, onBack }: HistoryPageProps) {
+  const { getAllEntrees, getAllSorties, updateEntree, updateSortie } = useFinance();
+  const [activeTab, setActiveTab] = useState<'entrees' | 'sorties'>('entrees');
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [entrees, setEntrees] = useState<EntreeWithCategorie[]>([]);
+  const [sorties, setSorties] = useState<Sortie[]>([]);
+  const [editing, setEditing] = useState<{ type: 'entree' | 'sortie'; item: EntreeWithCategorie | Sortie } | null>(null);
+
+  const loadData = async () => {
+    const [allEntrees, allSorties] = await Promise.all([getAllEntrees(), getAllSorties()]);
+    const range = dateFilterRange(filter);
+    setEntrees(allEntrees.filter((item) => item.date >= range.start && item.date <= range.end));
+    setSorties(allSorties.filter((item) => item.date >= range.start && item.date <= range.end));
+  };
+  useEffect(() => { void loadData(); }, [filter]);
+
+  const edit = async (type: 'entree' | 'sortie', item: EntreeWithCategorie | Sortie) => {
+    if (!isModifiable(item.created_at)) return;
+    if (type === 'entree') {
+      const entry = item as EntreeWithCategorie;
+      const result = await updateEntree(entry.id, { date: entry.date, culte: entry.culte, categorie_id: entry.categorie_id, beneficiaire: entry.beneficiaire, numero_beneficiaire: entry.numero_beneficiaire, devise: entry.devise, montant: entry.montant, montant_cdf: entry.montant_cdf, montant_usd: entry.montant_usd, note: entry.note });
+      if (result) generateRecuEntree(config, result, result.categorie_nom || '');
+    } else {
+      const sortie = item as Sortie;
+      const result = await updateSortie(sortie.id, { date: sortie.date, nature: sortie.nature, devise: sortie.devise, montant: sortie.montant, montant_cdf: sortie.montant_cdf, montant_usd: sortie.montant_usd, description: sortie.description, nom_operateur: sortie.nom_operateur, telephone_operateur: sortie.telephone_operateur });
+      if (result) generateRecuSortie(config, result);
+    }
+    setEditing(null);
+    await loadData();
+  };
+
+  const rows = activeTab === 'entrees' ? entrees : sorties;
+  return <div className="max-w-5xl mx-auto"><div className="flex items-center gap-3 mb-6"><button onClick={onBack} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"><ArrowLeft className="w-5 h-5 text-gray-600" /></button><h1 className="text-2xl font-bold text-gray-800">Historique</h1></div><div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap gap-2"><button onClick={() => setActiveTab('entrees')} className={`px-4 py-2 rounded-xl font-semibold ${activeTab === 'entrees' ? 'bg-emerald-600 text-white' : 'bg-gray-100'}`}>Entrées</button><button onClick={() => setActiveTab('sorties')} className={`px-4 py-2 rounded-xl font-semibold ${activeTab === 'sorties' ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>Sorties</button>{(['day', 'week', 'month', 'all'] as FilterType[]).map((value) => <button key={value} onClick={() => setFilter(value)} className={`px-3 py-2 rounded-lg text-sm ${filter === value ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>{value === 'day' ? 'Du jour' : value === 'week' ? 'Semaine' : value === 'month' ? 'Mois' : 'Tous'}</button>)}</div><div className="bg-white rounded-2xl border border-gray-100 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-left"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">{activeTab === 'entrees' ? 'Catégorie' : 'Nature'}</th><th className="px-4 py-3">Devise</th><th className="px-4 py-3">Montant</th><th className="px-4 py-3">Action</th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">Aucune donnée pour cette période.</td></tr> : rows.map((item) => { const entry = activeTab === 'entrees'; const label = entry ? (item as EntreeWithCategorie).categorie_nom || '—' : (item as Sortie).nature; return <tr key={item.id} className="border-t border-gray-100"><td className="px-4 py-3">{formatDateShort(item.date)}</td><td className="px-4 py-3">{label}</td><td className="px-4 py-3">{item.devise}</td><td className="px-4 py-3 font-semibold">{item.montant}</td><td className="px-4 py-3">{isModifiable(item.created_at) ? <button onClick={() => setEditing({ type: entry ? 'entree' : 'sortie', item })} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100"><PencilLine className="w-4 h-4" /> Modifier</button> : <span className="text-gray-400 inline-flex items-center gap-1"><Clock3 className="w-4 h-4" /> Lecture seule</span>}</td></tr>; })}</tbody></table></div></div>{editing && <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-2xl p-6 max-w-md w-full"><h2 className="font-bold mb-4">Confirmer la modification</h2><p className="text-sm text-gray-600 mb-5">Les données existantes seront réenregistrées et un nouveau reçu sera généré.</p><div className="flex gap-3"><button onClick={() => void edit(editing.type, editing.item)} className="flex-1 py-2 rounded-xl bg-emerald-600 text-white">Confirmer</button><button onClick={() => setEditing(null)} className="flex-1 py-2 rounded-xl bg-gray-100">Annuler</button></div></div></div>}</div>;
 }
-export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string) {
-  const doc = new jsPDF();
-  receipt(doc, config, "REÇU D'ENTRÉE", [
-    ['N° Reçu', `ENT-${entree.id.toString().padStart(6, '0')}`],
-    ['Date', formatDateShort(entree.date)],
-    ['Culte / Service', entree.culte],
-    ['Catégorie', categorieNom],
-    ['Bénéficiaire', entree.beneficiaire || '—'],
-    ['N° Bénéficiaire', entree.numero_beneficiaire || '—'],
-    ['Caisse', entree.devise],
-    ['Montant', entree.devise === 'CDF' ? formatCdf(entree.montant_cdf) : formatUsd(entree.montant_usd)],
-    ['Note', entree.note || '—'],
-  ], [22, 101, 52], `recu_entree_${entree.id}.pdf`);
-}
-export function generateRecuSortie(config: Config, sortie: Sortie) {
-  const doc = new jsPDF();
-  receipt(doc, config, 'REÇU DE SORTIE', [
-    ['N° Reçu', `SORT-${sortie.id.toString().padStart(6, '0')}`], ['Date', formatDateShort(sortie.date)], ['Nature du décaissement', sortie.nature], ['Caisse', sortie.devise], ['Montant', sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd)], ['Description', sortie.description || '—'], ['Opérateur', sortie.nom_operateur], ['Téléphone', sortie.telephone_operateur],
-  ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
-}
-export function generateRecuReversement(config: Config, reversement: Reversement, label: string) {
-  const doc = new jsPDF();
-  const lines: [string, string][] = [['N° Reçu', `REV-${reversement.id.toString().padStart(6, '0')}`], ['Type', label], ['Date', formatDateShort(reversement.date_reversement)]];
-  if (reversement.montant_cdf > 0) lines.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
-  if (reversement.montant_usd > 0) lines.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
-  lines.push(['Période', reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—']);
-  receipt(doc, config, 'REÇU DE REVERSEMENT', lines, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
-}
-interface ReportData { title: string; periodeLabel: string; year: number; entrees: EntreeWithCategorie[]; sorties: Sortie[]; reversements: Reversement[]; totalEntreesCdf: number; totalEntreesUsd: number; totalSortiesCdf: number; totalSortiesUsd: number; totalReversementsCdf: number; totalReversementsUsd: number; soldeCdf: number; soldeUsd: number; }
-export function generateReport(config: Config, data: ReportData) {
-  const doc = new jsPDF();
-  header(doc, config, data.title);
-  doc.setFontSize(10); doc.setFont('helvetica', 'italic');
-  doc.text(`Période: ${data.periodeLabel}`, 105, 44, { align: 'center' });
-  doc.text(`Année: ${data.year}`, 105, 49, { align: 'center' });
-  let y = 56;
-  const parCategorieCdf = new Map<string, number>();
-  const parCategorieUsd = new Map<string, number>();
-  for (const e of data.entrees) { const nom = e.categorie_nom || '—'; parCategorieCdf.set(nom, (parCategorieCdf.get(nom) || 0) + e.montant_cdf); parCategorieUsd.set(nom, (parCategorieUsd.get(nom) || 0) + e.montant_usd); }
-  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('ENTRÉES', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Date', 'Culte', 'Catégorie', 'Bénéficiaire', 'N° Bénéficiaire', 'Caisse', 'Montant', 'Note']], body: data.entrees.map((e) => [formatDateShort(e.date), e.culte, e.categorie_nom || '—', e.beneficiaire || '—', e.numero_beneficiaire || '—', e.devise, e.devise === 'CDF' ? formatCdf(e.montant_cdf) : formatUsd(e.montant_usd), e.note || '—']), theme: 'striped', headStyles: { fillColor: [22, 101, 52], fontSize: 8 }, bodyStyles: { fontSize: 7 }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.text('Résumé par catégorie', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Catégorie', 'Caisse CDF', 'Caisse USD']], body: Array.from(parCategorieCdf.entries()).map(([nom]) => [nom, formatCdf(parCategorieCdf.get(nom) || 0), formatUsd(parCategorieUsd.get(nom) || 0)]), theme: 'striped', headStyles: { fillColor: [22,101,52], fontSize: 9 }, bodyStyles: { fontSize: 8 }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SORTIES', 14, y); y += 4;
-  autoTable(doc, { startY: y, head: [['Date', 'Nature', 'Caisse', 'Montant', 'Description', 'Opérateur']], body: data.sorties.map((s) => [formatDateShort(s.date), s.nature, s.devise, s.devise === 'CDF' ? formatCdf(s.montant_cdf) : formatUsd(s.montant_usd), s.description || '—', `${s.nom_operateur} (${s.telephone_operateur})`]), foot: [['', 'Total Sorties', '', `${formatCdf(data.totalSortiesCdf)} | ${formatUsd(data.totalSortiesUsd)}`, '', '']], theme: 'striped', headStyles: { fillColor: [185,28,28], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [185,28,28], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; if (data.reversements.length > 0) { doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('REVERSEMENTS', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Date', 'Type', 'Caisse CDF', 'Caisse USD', 'Période']], body: data.reversements.map((r) => [formatDateShort(r.date_reversement), r.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)', formatCdf(r.montant_cdf), formatUsd(r.montant_usd), r.periode_debut && r.periode_fin ? `${formatDateShort(r.periode_debut)} - ${formatDateShort(r.periode_fin)}` : '—']), foot: [['', 'Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd), '']], theme: 'striped', headStyles: { fillColor: [180,83,9], fontSize: 9 }, bodyStyles: { fontSize: 8 }, footStyles: { fillColor: [180,83,9], fontSize: 9, textColor: [255,255,255] }, margin: { left: 14, right: 14 } }); y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10; }
-  doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.text('SYNTHÈSE', 14, y); y += 4; autoTable(doc, { startY: y, head: [['Indicateur', 'Caisse CDF', 'Caisse USD']], body: [['Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd)], ['Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd)], ['Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd)], ['Solde Net en Caisse', formatCdf(data.soldeCdf), formatUsd(data.soldeUsd)]], theme: 'grid', headStyles: { fillColor: [30,58,95], fontSize: 10 }, bodyStyles: { fontSize: 10 }, margin: { left: 14, right: 14 } });
-  footer(doc); doc.save(`rapport_${data.title.replace(/\s/g, '_').toLowerCase()}.pdf`);
-}
-export { MONTH_NAMES };

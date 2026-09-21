@@ -1,223 +1,85 @@
-import { useState, useCallback } from 'react';
-import { query, queryOne, execute } from '@/lib/database';
-import type { Entree, EntreeWithCategorie, Sortie, Reversement, Exercice } from '@/types';
+import { useState } from 'react';
+import { ArrowLeft, Save, X, Calendar, Tag, DollarSign, FileText, User, Phone, CheckCircle2 } from 'lucide-react';
+import type { Categorie, Config, Devise } from '@/types';
+import { CULTE_OPTIONS } from '@/types';
+import { useFinance } from '@/hooks/useFinance';
+import { todayISO, formatDual } from '@/utils/format';
+import { generateRecuEntree } from '@/services/pdf';
 
-export function useFinance() {
-  const [loading, setLoading] = useState(false);
+interface EntryFormProps {
+  config: Config;
+  categories: Categorie[];
+  onBack: () => void;
+}
+
+export function EntryForm({ config, categories, onBack }: EntryFormProps) {
+  const { addEntree } = useFinance();
+  const [date, setDate] = useState(todayISO());
+  const [culte, setCulte] = useState<string>(CULTE_OPTIONS[0]);
+  const [categorieId, setCategorieId] = useState<number>(categories[0]?.id || 0);
+  const [beneficiaire, setBeneficiaire] = useState('');
+  const [numeroBeneficiaire, setNumeroBeneficiaire] = useState('');
+  const [devise, setDevise] = useState<Devise>('CDF');
+  const [montant, setMontant] = useState('');
+  const [note, setNote] = useState('');
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const addEntree = useCallback(async (data: Omit<Entree, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO entrees (date, culte, categorie_id, beneficiaire, numero_beneficiaire, devise, montant, montant_cdf, montant_usd, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          data.date,
-          data.culte,
-          data.categorie_id,
-          data.beneficiaire,
-          data.numero_beneficiaire,
-          data.devise,
-          data.montant,
-          data.montant_cdf,
-          data.montant_usd,
-          data.note,
-        ],
-      );
-      return await queryOne<EntreeWithCategorie>(`SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.id = ?`, [id]);
-    } catch {
-      setError('Erreur lors de l’ajout de l’entrée');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const addSortie = useCallback(async (data: Omit<Sortie, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO sorties (date, nature, devise, montant, montant_cdf, montant_usd, description, nom_operateur, telephone_operateur)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.nature, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.description, data.nom_operateur, data.telephone_operateur],
-      );
-      return await queryOne<Sortie>('SELECT * FROM sorties WHERE id = ?', [id]);
-    } catch {
-      setError('Erreur lors de l’ajout de la sortie');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const addReversement = useCallback(async (data: Omit<Reversement, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const id = await execute(
-        `INSERT INTO reversements (type, montant_cdf, montant_usd, date_reversement, periode_debut, periode_fin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [data.type, data.montant_cdf, data.montant_usd, data.date_reversement, data.periode_debut, data.periode_fin],
-      );
-      return await queryOne<Reversement>('SELECT * FROM reversements WHERE id = ?', [id]);
-    } catch {
-      setError('Erreur lors de l’ajout du reversement');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const updateEntree = useCallback(async (id: number, data: Omit<Entree, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await execute('DELETE FROM entrees WHERE id = ?', [id]);
-      const newId = await execute(
-        `INSERT INTO entrees (date, culte, categorie_id, beneficiaire, numero_beneficiaire, devise, montant, montant_cdf, montant_usd, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          data.date,
-          data.culte,
-          data.categorie_id,
-          data.beneficiaire,
-          data.numero_beneficiaire,
-          data.devise,
-          data.montant,
-          data.montant_cdf,
-          data.montant_usd,
-          data.note,
-        ],
-      );
-      return await queryOne<EntreeWithCategorie>(`SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.id = ?`, [newId]);
-    } catch {
-      setError('Erreur lors de la modification de l’entrée');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const updateSortie = useCallback(async (id: number, data: Omit<Sortie, 'id' | 'created_at'>) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await execute('DELETE FROM sorties WHERE id = ?', [id]);
-      const newId = await execute(
-        `INSERT INTO sorties (date, nature, devise, montant, montant_cdf, montant_usd, description, nom_operateur, telephone_operateur)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [data.date, data.nature, data.devise, data.montant, data.montant_cdf, data.montant_usd, data.description, data.nom_operateur, data.telephone_operateur],
-      );
-      return await queryOne<Sortie>('SELECT * FROM sorties WHERE id = ?', [newId]);
-    } catch {
-      setError('Erreur lors de la modification de la sortie');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const getEntrees = useCallback((start: string, end: string) =>
-    query<EntreeWithCategorie>(
-      'SELECT e.*, c.nom categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.date >= ? AND e.date <= ? ORDER BY e.date DESC',
-      [start, end],
-    ), []);
-
-  const getSorties = useCallback((start: string, end: string) =>
-    query<Sortie>('SELECT * FROM sorties WHERE date >= ? AND date <= ? ORDER BY date DESC', [start, end]), []);
-
-  const getReversements = useCallback((start: string, end: string) =>
-    query<Reversement>('SELECT * FROM reversements WHERE date_reversement >= ? AND date_reversement <= ? ORDER BY date_reversement DESC', [start, end]), []);
-
-  const getAllEntrees = useCallback(() =>
-    query<EntreeWithCategorie>('SELECT e.*, c.nom categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id ORDER BY e.date DESC, e.id DESC'), []);
-
-  const getAllSorties = useCallback(() =>
-    query<Sortie>('SELECT * FROM sorties ORDER BY date DESC, id DESC'), []);
-
-  const getAllReversements = useCallback(() =>
-    query<Reversement>('SELECT * FROM reversements ORDER BY date_reversement DESC, id DESC'), []);
-
-  const getExercice = useCallback((year: number) =>
-    queryOne<Exercice>('SELECT * FROM exercices WHERE annee = ?', [year]), []);
-
-  const getMonthlyTotals = useCallback(async (year: number) => {
-    const start = `${year}-01-01`;
-    const end = `${year}-12-31`;
-    const [entrees, sorties, reversements] = await Promise.all([
-      query<EntreeWithCategorie>(
-        `SELECT e.*, c.nom AS categorie_nom FROM entrees e JOIN categories c ON e.categorie_id = c.id WHERE e.date >= ? AND e.date <= ? ORDER BY e.date ASC`,
-        [start, end],
-      ),
-      query<Sortie>('SELECT * FROM sorties WHERE date >= ? AND date <= ? ORDER BY date ASC', [start, end]),
-      query<Reversement>('SELECT * FROM reversements WHERE date_reversement >= ? AND date_reversement <= ? ORDER BY date_reversement ASC', [start, end]),
-    ]);
-
-    const monthlyEntreesCdf = Array.from({ length: 12 }, () => 0);
-    const monthlyEntreesUsd = Array.from({ length: 12 }, () => 0);
-    const monthlySortiesCdf = Array.from({ length: 12 }, () => 0);
-    const monthlySortiesUsd = Array.from({ length: 12 }, () => 0);
-    const monthlyReversementsCdf = Array.from({ length: 12 }, () => 0);
-    const monthlyReversementsUsd = Array.from({ length: 12 }, () => 0);
-
-    for (const e of entrees) {
-      const month = new Date(`${e.date}T00:00:00`).getMonth();
-      monthlyEntreesCdf[month] += e.montant_cdf;
-      monthlyEntreesUsd[month] += e.montant_usd;
-    }
-
-    for (const s of sorties) {
-      const month = new Date(`${s.date}T00:00:00`).getMonth();
-      monthlySortiesCdf[month] += s.montant_cdf;
-      monthlySortiesUsd[month] += s.montant_usd;
-    }
-
-    for (const r of reversements) {
-      const month = new Date(`${r.date_reversement}T00:00:00`).getMonth();
-      monthlyReversementsCdf[month] += r.montant_cdf;
-      monthlyReversementsUsd[month] += r.montant_usd;
-    }
-
-    return { monthlyEntreesCdf, monthlyEntreesUsd, monthlySortiesCdf, monthlySortiesUsd, monthlyReversementsCdf, monthlyReversementsUsd, entrees, reversements, sorties };
-  }, []);
-
-  const deleteAllEntrees = useCallback(() => execute('DELETE FROM entrees WHERE id > 0'), []);
-  const deleteAllSorties = useCallback(() => execute('DELETE FROM sorties WHERE id > 0'), []);
-  const deleteAllReversements = useCallback(() => execute('DELETE FROM reversements WHERE id > 0'), []);
-  const deleteAllExercices = useCallback(() => execute('DELETE FROM exercices WHERE id > 0'), []);
-
-  const archiveExercice = useCallback(
-    (annee: number, totalEntrees: number, totalSorties: number, totalReversements: number, donnees: string) =>
-      execute(
-        'INSERT INTO exercices (annee, total_entrees, total_sorties, total_reversements, donnees) VALUES (?, ?, ?, ?, ?)',
-        [annee, totalEntrees, totalSorties, totalReversements, donnees],
-      ),
-    [],
-  );
-
-  return {
-    loading,
-    error,
-    addEntree,
-    addSortie,
-    addReversement,
-    updateEntree,
-    updateSortie,
-    getEntrees,
-    getSorties,
-    getReversements,
-    getAllEntrees,
-    getAllSorties,
-    getAllReversements,
-    getExercice,
-    getMonthlyTotals,
-    deleteAllEntrees,
-    deleteAllSorties,
-    deleteAllReversements,
-    deleteAllExercices,
-    archiveExercice,
+  const computeAmounts = () => {
+    const value = Number(montant) || 0;
+    return devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const amount = Number(montant);
+    if (!amount || amount <= 0) {
+      setError('Veuillez entrer un montant valide');
+      return;
+    }
+    if (!culte || !categorieId) {
+      setError('Veuillez remplir les champs obligatoires');
+      return;
+    }
+    const amounts = computeAmounts();
+    const result = await addEntree({
+      date,
+      culte,
+      categorie_id: categorieId,
+      beneficiaire: beneficiaire.trim() || null,
+      numero_beneficiaire: numeroBeneficiaire.trim() || null,
+      devise,
+      montant: amount,
+      ...amounts,
+      note: note.trim() || null,
+    });
+    if (!result) {
+      setError('Erreur lors de l’enregistrement');
+      return;
+    }
+    generateRecuEntree(config, result, categories.find((category) => category.id === categorieId)?.nom || '');
+    setSuccess(true);
+    setTimeout(onBack, 1800);
+  };
+
+  if (success) {
+    return <div className="min-h-[60vh] flex items-center justify-center"><div className="text-center"><CheckCircle2 className="w-16 h-16 mx-auto text-emerald-600" /><h3 className="text-xl font-bold text-gray-800 mt-4">Entrée enregistrée</h3><p className="text-gray-500 mt-1">Le reçu PDF a été téléchargé</p></div></div>;
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="flex items-center gap-3 mb-6"><button onClick={onBack} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"><ArrowLeft className="w-5 h-5 text-gray-600" /></button><h1 className="text-2xl font-bold text-gray-800">Enregistrer une Entrée</h1></div>
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+        <div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><Calendar className="w-4 h-4 text-emerald-600" /> Date</label><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" /></div>
+        <div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><Tag className="w-4 h-4 text-emerald-600" /> Culte / Service</label><select value={culte} onChange={(event) => setCulte(event.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-white">{CULTE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+        <div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><Tag className="w-4 h-4 text-emerald-600" /> Nature de la recette</label><select value={categorieId} onChange={(event) => setCategorieId(Number(event.target.value))} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-white">{categories.map((category) => <option key={category.id} value={category.id}>{category.nom}</option>)}</select></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><User className="w-4 h-4 text-emerald-600" /> Bénéficiaire</label><input value={beneficiaire} onChange={(event) => setBeneficiaire(event.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" /></div><div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><Phone className="w-4 h-4 text-emerald-600" /> N° bénéficiaire</label><input value={numeroBeneficiaire} onChange={(event) => setNumeroBeneficiaire(event.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" /></div></div>
+        <div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><DollarSign className="w-4 h-4 text-emerald-600" /> Devise</label><div className="flex gap-3">{(['CDF', 'USD'] as Devise[]).map((currency) => <button key={currency} type="button" onClick={() => setDevise(currency)} className={`flex-1 py-2.5 rounded-xl border font-semibold ${devise === currency ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>{currency}</button>)}</div></div>
+        <div><label className="text-sm font-medium text-gray-700 mb-2 block">Montant ({devise})</label><input type="number" min="0" step="0.01" value={montant} onChange={(event) => setMontant(event.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-lg font-semibold" />{montant && Number(montant) > 0 && <p className="text-sm text-emerald-600 mt-1 font-medium">{formatDual(computeAmounts().montant_cdf, computeAmounts().montant_usd)}</p>}</div>
+        <div><label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2"><FileText className="w-4 h-4 text-emerald-600" /> Note (optionnel)</label><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" /></div>
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>}
+        <div className="flex gap-3"><button type="submit" className="flex-1 py-3 bg-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2"><Save className="w-5 h-5" /> Enregistrer</button><button type="button" onClick={onBack} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl flex items-center justify-center gap-2"><X className="w-5 h-5" /> Annuler</button></div>
+      </form>
+    </div>
+  );
 }
