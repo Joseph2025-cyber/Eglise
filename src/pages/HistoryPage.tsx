@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Clock3, PencilLine, X } from 'lucide-react';
-import type { Config, EntreeWithCategorie, Sortie } from '@/types';
+import type { Categorie, Config, CULTE_OPTIONS, Devise, EntreeWithCategorie, Sortie } from '@/types';
 import { useFinance } from '@/hooks/useFinance';
+import { query } from '@/lib/database';
 import { formatDateShort, todayISO } from '@/utils/format';
 import { generateRecuEntree, generateRecuSortie } from '@/services/pdf';
 
@@ -10,98 +11,58 @@ type FilterType = 'day' | 'week' | 'month' | 'all';
 type TabType = 'entrees' | 'sorties';
 type EditableItem = { type: TabType; item: EntreeWithCategorie | Sortie };
 
+const CULTE_PICKLIST = ['Culte de dimanche', 'Mercredi solution', 'Soirée de Gloire', 'Séminaire', 'Autre culte'];
+const CATEGORIE_PICKLIST = ['Dîmes', 'Offrandes ordinaires', 'Offrandes extraordinaires', 'Action de grâce', 'Évangélisation', 'Dons'];
 const inputClass = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100';
 const labelClass = 'mb-1.5 block text-sm font-semibold text-gray-700';
 const editWindow = 24 * 60 * 60 * 1000;
 
-function isModifiable(createdAt: string | null | undefined) {
-  return Boolean(createdAt && Date.now() - new Date(createdAt).getTime() <= editWindow);
-}
-
-function dateFilterRange(filter: FilterType) {
-  const today = new Date();
-  const end = todayISO();
-  if (filter === 'all') return { start: '0000-01-01', end };
-  const start = new Date(today);
-  if (filter === 'day') start.setHours(0, 0, 0, 0);
-  if (filter === 'week') start.setDate(today.getDate() - 6);
-  if (filter === 'month') start.setDate(1);
-  return { start: start.toISOString().slice(0, 10), end };
-}
+function isModifiable(createdAt: string | null | undefined) { return Boolean(createdAt && Date.now() - new Date(createdAt).getTime() <= editWindow); }
+function dateFilterRange(filter: FilterType) { const today = new Date(); const end = todayISO(); if (filter === 'all') return { start: '0000-01-01', end }; const start = new Date(today); if (filter === 'day') start.setHours(0, 0, 0, 0); if (filter === 'week') start.setDate(today.getDate() - 6); if (filter === 'month') start.setDate(1); return { start: start.toISOString().slice(0, 10), end }; }
+function categoryKey(value: string) { return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/s$/g, '').trim(); }
 
 export function HistoryPage({ config, onBack }: HistoryPageProps) {
   const { getAllEntrees, getAllSorties, updateEntree, updateSortie } = useFinance();
-  const [activeTab, setActiveTab] = useState<TabType>('entrees');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [entrees, setEntrees] = useState<EntreeWithCategorie[]>([]);
-  const [sorties, setSorties] = useState<Sortie[]>([]);
-  const [editing, setEditing] = useState<EditableItem | null>(null);
-  const [date, setDate] = useState('');
-  const [culte, setCulte] = useState('');
-  const [nature, setNature] = useState('');
-  const [montant, setMontant] = useState('');
-  const [note, setNote] = useState('');
-  const [description, setDescription] = useState('');
-  const [nomOperateur, setNomOperateur] = useState('');
-  const [numeroOperateur, setNumeroOperateur] = useState('');
-  const [beneficiaire, setBeneficiaire] = useState('');
-  const [numeroBeneficiaire, setNumeroBeneficiaire] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('entrees'); const [filter, setFilter] = useState<FilterType>('all');
+  const [entrees, setEntrees] = useState<EntreeWithCategorie[]>([]); const [sorties, setSorties] = useState<Sortie[]>([]); const [categories, setCategories] = useState<Categorie[]>([]);
+  const [editing, setEditing] = useState<EditableItem | null>(null); const [date, setDate] = useState(''); const [culte, setCulte] = useState(CULTE_PICKLIST[0]); const [categorieId, setCategorieId] = useState(0); const [devise, setDevise] = useState<Devise>('CDF'); const [nature, setNature] = useState(''); const [montant, setMontant] = useState(''); const [note, setNote] = useState(''); const [description, setDescription] = useState(''); const [nomOperateur, setNomOperateur] = useState(''); const [numeroOperateur, setNumeroOperateur] = useState(''); const [beneficiaire, setBeneficiaire] = useState(''); const [numeroBeneficiaire, setNumeroBeneficiaire] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState(false);
 
-  const loadData = async () => {
-    const [allEntrees, allSorties] = await Promise.all([getAllEntrees(), getAllSorties()]);
-    const range = dateFilterRange(filter);
-    setEntrees(allEntrees.filter((item) => item.date >= range.start && item.date <= range.end));
-    setSorties(allSorties.filter((item) => item.date >= range.start && item.date <= range.end));
-  };
-
-  useEffect(() => { void loadData(); }, [filter]);
-
+  const loadData = async () => { const [allEntrees, allSorties] = await Promise.all([getAllEntrees(), getAllSorties()]); const range = dateFilterRange(filter); setEntrees(allEntrees.filter((item) => item.date >= range.start && item.date <= range.end)); setSorties(allSorties.filter((item) => item.date >= range.start && item.date <= range.end)); };
+  useEffect(() => { void loadData(); void query<Categorie>('SELECT * FROM categories ORDER BY ordre, id').then(setCategories); }, [filter]);
   const rows = useMemo(() => activeTab === 'entrees' ? entrees : sorties, [activeTab, entrees, sorties]);
+  const closeEditor = () => { if (!saving) { setEditing(null); setError(null); setPassword(''); } };
 
   const openEditor = (type: TabType, item: EntreeWithCategorie | Sortie) => {
     if (!isModifiable(item.created_at)) return;
-    setError(null); setEditing({ type, item }); setDate(item.date); setMontant(String(item.montant));
-    if (type === 'entrees') {
-      const entry = item as EntreeWithCategorie;
-      setCulte(entry.culte); setNote(entry.note || '');
-    } else {
-      const sortie = item as Sortie;
-      setNature(sortie.nature); setDescription(sortie.description || ''); setNomOperateur(sortie.nom_operateur || ''); setNumeroOperateur(sortie.numero_operateur || ''); setBeneficiaire(sortie.beneficiaire || ''); setNumeroBeneficiaire(sortie.numero_beneficiaire || '');
-    }
+    setError(null); setEditing({ type, item }); setDate(item.date); setMontant(String(item.montant)); setDevise(item.devise);
+    if (type === 'entrees') { const entry = item as EntreeWithCategorie; setCulte(entry.culte); setCategorieId(entry.categorie_id); setNote(entry.note || ''); }
+    else { const sortie = item as Sortie; setNature(sortie.nature); setDescription(sortie.description || ''); setNomOperateur(sortie.nom_operateur || ''); setNumeroOperateur(sortie.numero_operateur || ''); setBeneficiaire(sortie.beneficiaire || ''); setNumeroBeneficiaire(sortie.numero_beneficiaire || ''); }
   };
-
-  const closeEditor = () => { if (!saving) { setEditing(null); setError(null); } };
 
   const saveEdit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!editing || !isModifiable(editing.item.created_at)) { setError('Cette transaction n’est plus modifiable : le délai de 24 heures est dépassé.'); return; }
-    const value = Number(montant);
-    if (!date || !value || value <= 0) { setError('Veuillez saisir une date et un montant valide.'); return; }
-    setSaving(true); setError(null);
-    let result: EntreeWithCategorie | Sortie | null = null;
+    event.preventDefault(); if (!editing || !isModifiable(editing.item.created_at)) { setError('Cette transaction n’est plus modifiable : le délai de 24 heures est dépassé.'); return; }
+    const value = Number(montant); if (!date || !value || value <= 0) { setError('Veuillez saisir une date et un montant valide.'); return; }
+    if (editing.type === 'entrees' && !categorieId) { setError('Veuillez sélectionner une catégorie.'); return; }
+    if (editing.type === 'sorties' && password !== config.mdp_sortie) { setError('Mot de passe de confirmation incorrect.'); return; }
+    setSaving(true); setError(null); let result: EntreeWithCategorie | Sortie | null = null;
     if (editing.type === 'entrees') {
-      const entry = editing.item as EntreeWithCategorie;
-      const amounts = entry.devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
-      result = await updateEntree(entry.id, { date, culte: culte.trim(), categorie_id: entry.categorie_id, beneficiaire: entry.beneficiaire, numero_beneficiaire: entry.numero_beneficiaire, devise: entry.devise, montant: value, ...amounts, note: note.trim() || null });
-      if (result) generateRecuEntree(config, result as EntreeWithCategorie, (result as EntreeWithCategorie).categorie_nom || entry.categorie_nom || '');
+      const entry = editing.item as EntreeWithCategorie; const amounts = devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
+      result = await updateEntree(entry.id, { date, culte, categorie_id: categorieId, beneficiaire: entry.beneficiaire, numero_beneficiaire: entry.numero_beneficiaire, devise, montant: value, ...amounts, note: note.trim() || null });
+      if (result) generateRecuEntree(config, result, result.categorie_nom || '');
     } else {
-      const sortie = editing.item as Sortie;
-      const amounts = sortie.devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
-      result = await updateSortie(sortie.id, { date, nature: nature.trim(), devise: sortie.devise, montant: value, ...amounts, description: description.trim() || null, nom_operateur: nomOperateur.trim(), numero_operateur: numeroOperateur.trim(), telephone_operateur: sortie.telephone_operateur || '', beneficiaire: beneficiaire.trim(), numero_beneficiaire: numeroBeneficiaire.trim() });
-      if (result) generateRecuSortie(config, result as Sortie);
+      const sortie = editing.item as Sortie; const amounts = devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
+      const balanceRows = await query<{ solde: number }>(`SELECT COALESCE((SELECT SUM(montant_cdf) FROM entrees),0)-COALESCE((SELECT SUM(montant_cdf) FROM sorties WHERE id != ?),0)-COALESCE((SELECT SUM(montant_cdf) FROM reversements),0) AS solde WHERE ? = 'CDF' UNION ALL SELECT COALESCE((SELECT SUM(montant_usd) FROM entrees),0)-COALESCE((SELECT SUM(montant_usd) FROM sorties WHERE id != ?),0)-COALESCE((SELECT SUM(montant_usd) FROM reversements),0) AS solde WHERE ? = 'USD'`, [sortie.id, devise, sortie.id, devise]);
+      if ((balanceRows[0]?.solde || 0) < value) { setSaving(false); setError('Opération refusée : solde insuffisant. Veuillez réessayer plus tard.'); return; }
+      result = await updateSortie(sortie.id, { date, nature: nature.trim(), devise, montant: value, ...amounts, description: description.trim() || null, nom_operateur: nomOperateur.trim(), numero_operateur: numeroOperateur.trim(), telephone_operateur: sortie.telephone_operateur || '', beneficiaire: beneficiaire.trim(), numero_beneficiaire: numeroBeneficiaire.trim() });
+      if (result) generateRecuSortie(config, result);
     }
-    setSaving(false);
-    if (!result) { setError("La modification n'a pas pu être enregistrée."); return; }
-    setEditing(null); await loadData();
+    setSaving(false); if (!result) { setError("La modification n'a pas pu être enregistrée."); return; } closeEditor(); await loadData();
   };
 
-  return <div className="mx-auto max-w-5xl">
-    <div className="mb-5 flex items-center gap-3"><button type="button" onClick={onBack} className="rounded-xl bg-gray-100 p-2.5 hover:bg-gray-200"><ArrowLeft className="h-5 w-5 text-gray-600" /></button><div><h1 className="text-xl font-bold text-gray-800">Historique</h1><p className="text-sm text-gray-500">Consultez et modifiez vos opérations récentes</p></div></div>
-    <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1"><button type="button" onClick={() => setActiveTab('entrees')} className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${activeTab === 'entrees' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Entrées ({entrees.length})</button><button type="button" onClick={() => setActiveTab('sorties')} className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${activeTab === 'sorties' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500'}`}>Sorties ({sorties.length})</button></div>
-    <div className="mb-5 flex flex-wrap gap-2">{([['day', 'Du jour'], ['week', 'De la semaine'], ['month', 'Du mois'], ['all', 'Tous']] as [FilterType, string][]).map(([value, label]) => <button type="button" key={value} onClick={() => setFilter(value)} className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${filter === value ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'}`}>{label}</button>)}</div>
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">{rows.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">Aucune opération pour cette période.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Nature</th><th className="px-4 py-3">Détails</th><th className="px-4 py-3 text-right">Montant</th><th className="px-4 py-3 text-center">Action</th></tr></thead><tbody className="divide-y divide-gray-100">{rows.map((item) => { const entry = activeTab === 'entrees'; const editable = isModifiable(item.created_at); return <tr key={item.id} className="hover:bg-gray-50"><td className="whitespace-nowrap px-4 py-3 text-gray-600">{formatDateShort(item.date)}</td><td className="px-4 py-3 font-semibold text-gray-800">{entry ? (item as EntreeWithCategorie).categorie_nom || 'Entrée' : (item as Sortie).nature}</td><td className="max-w-xs truncate px-4 py-3 text-gray-500">{entry ? (item as EntreeWithCategorie).culte : (item as Sortie).beneficiaire || (item as Sortie).description || '—'}</td><td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${entry ? 'text-emerald-700' : 'text-red-700'}`}>{Number(item.montant).toLocaleString('fr-FR')} {item.devise}</td><td className="px-4 py-3 text-center">{editable ? <button type="button" onClick={() => openEditor(activeTab, item)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><PencilLine className="h-3.5 w-3.5" /> Modifier</button> : <span title="Modification impossible après 24 heures" className="inline-flex items-center gap-1 text-xs text-gray-400"><Clock3 className="h-3.5 w-3.5" /> Lecture seule</span>}</td></tr>; })}</tbody></table></div>}</div>
-    {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveEdit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-bold text-gray-800">Modifier la transaction</h2><p className="text-xs text-gray-500">Cette modification remplacera l'opération actuelle.</p></div><button type="button" onClick={closeEditor} className="rounded-lg p-2 hover:bg-gray-100"><X className="h-5 w-5 text-gray-500" /></button></div><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label className={labelClass}>Date</label><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={inputClass} /></div>{editing.type === 'entrees' ? <><div><label className={labelClass}>Culte / Service</label><input value={culte} onChange={(event) => setCulte(event.target.value)} className={inputClass} /></div><div><label className={labelClass}>Catégorie</label><input value={(editing.item as EntreeWithCategorie).categorie_nom || ''} disabled className={`${inputClass} bg-gray-50`} /></div></> : <div><label className={labelClass}>Nature de la dépense</label><input value={nature} onChange={(event) => setNature(event.target.value)} className={inputClass} /></div>}<div><label className={labelClass}>Montant ({editing.item.devise})</label><input type="number" min="0" step="0.01" value={montant} onChange={(event) => setMontant(event.target.value)} className={inputClass} /></div>{editing.type === 'entrees' ? <div className="sm:col-span-2"><label className={labelClass}>Note</label><textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} className={`${inputClass} resize-none`} /></div> : <><div className="sm:col-span-2"><label className={labelClass}>Description</label><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} className={`${inputClass} resize-none`} /></div><div><label className={labelClass}>Nom de l'opérateur</label><input value={nomOperateur} onChange={(event) => setNomOperateur(event.target.value)} className={inputClass} /></div><div><label className={labelClass}>Numéro de l'opérateur</label><input value={numeroOperateur} onChange={(event) => setNumeroOperateur(event.target.value)} className={inputClass} /></div><div><label className={labelClass}>Bénéficiaire</label><input value={beneficiaire} onChange={(event) => setBeneficiaire(event.target.value)} className={inputClass} /></div><div><label className={labelClass}>Numéro du bénéficiaire</label><input value={numeroBeneficiaire} onChange={(event) => setNumeroBeneficiaire(event.target.value)} className={inputClass} /></div></>}</div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">{error}</div>}<div className="mt-5 flex gap-3"><button type="button" onClick={closeEditor} className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 font-semibold text-gray-700">Annuler</button><button type="submit" disabled={saving} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving ? 'Enregistrement...' : 'Enregistrer et télécharger le reçu'}</button></div></form></div>}
+  return <div className="mx-auto max-w-5xl"><div className="mb-5 flex items-center gap-3"><button type="button" onClick={onBack} className="rounded-xl bg-gray-100 p-2.5 hover:bg-gray-200"><ArrowLeft className="h-5 w-5 text-gray-600" /></button><div><h1 className="text-xl font-bold text-gray-800">Historique</h1><p className="text-sm text-gray-500">Consultez et modifiez vos opérations récentes</p></div></div>
+    <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1"><button type="button" onClick={() => setActiveTab('entrees')} className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${activeTab === 'entrees' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Entrées ({entrees.length})</button><button type="button" onClick={() => setActiveTab('sorties')} className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${activeTab === 'sorties' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500'}`}>Sorties ({sorties.length})</button></div>
+    <div className="mb-5 flex flex-wrap gap-2">{([['day', 'Du jour'], ['week', 'De la semaine'], ['month', 'Du mois'], ['all', 'Tous']] as [FilterType, string][]).map(([value, label]) => <button type="button" key={value} onClick={() => setFilter(value)} className={`rounded-xl border px-3 py-2 text-sm ${filter === value ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>)}</div>
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">{rows.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">Aucune opération pour cette période.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Nature</th><th className="px-4 py-3">Détails</th><th className="px-4 py-3 text-right">Montant</th><th className="px-4 py-3 text-center">Action</th></tr></thead><tbody className="divide-y divide-gray-100">{rows.map((item) => { const entry = activeTab === 'entrees'; const editable = isModifiable(item.created_at); return <tr key={item.id}><td className="px-4 py-3 text-gray-600">{formatDateShort(item.date)}</td><td className="px-4 py-3 font-semibold">{entry ? (item as EntreeWithCategorie).categorie_nom || 'Entrée' : (item as Sortie).nature}</td><td className="max-w-xs truncate px-4 py-3 text-gray-500">{entry ? (item as EntreeWithCategorie).culte : (item as Sortie).beneficiaire || '—'}</td><td className={`px-4 py-3 text-right font-semibold ${entry ? 'text-emerald-700' : 'text-red-700'}`}>{Number(item.montant).toLocaleString('fr-FR')} {item.devise}</td><td className="px-4 py-3 text-center">{editable ? <button type="button" onClick={() => openEditor(activeTab, item)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><PencilLine className="h-3.5 w-3.5" /> Modifier</button> : <span className="inline-flex items-center gap-1 text-xs text-gray-400"><Clock3 className="h-3.5 w-3.5" /> Lecture seule</span>}</td></tr>; })}</tbody></table></div>}</div>
+    {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveEdit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-bold">Modifier la transaction</h2><p className="text-xs text-gray-500">L’ancienne opération sera remplacée.</p></div><button type="button" onClick={closeEditor}><X className="h-5 w-5 text-gray-500" /></button></div><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label className={labelClass}>Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></div>{editing.type === 'entrees' ? <><div><label className={labelClass}>Culte / Service</label><select value={culte} onChange={(e) => setCulte(e.target.value)} className={inputClass}>{CULTE_PICKLIST.map((item) => <option key={item}>{item}</option>)}</select></div><div><label className={labelClass}>Catégorie</label><select value={categorieId} onChange={(e) => setCategorieId(Number(e.target.value))} className={inputClass}>{categories.map((category) => <option key={category.id} value={category.id}>{CATEGORIE_PICKLIST.find((item) => categoryKey(item) === categoryKey(category.nom)) || category.nom}</option>)}</select></div></> : <div><label className={labelClass}>Nature de la dépense</label><input value={nature} onChange={(e) => setNature(e.target.value)} className={inputClass} /></div>}<div><label className={labelClass}>Devise</label><div className="grid grid-cols-2 gap-2">{(['CDF', 'USD'] as Devise[]).map((item) => <button type="button" key={item} onClick={() => setDevise(item)} className={`rounded-xl border py-2.5 text-sm font-semibold ${devise === item ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-gray-300 text-gray-600'}`}>{item}</button>)}</div></div><div><label className={labelClass}>Montant ({devise})</label><input type="number" min="0" step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} className={inputClass} /></div>{editing.type === 'entrees' ? <div className="sm:col-span-2"><label className={labelClass}>Note</label><textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} className={`${inputClass} resize-none`} /></div> : <><div className="sm:col-span-2"><label className={labelClass}>Description</label><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className={`${inputClass} resize-none`} /></div><div><label className={labelClass}>Nom de l'opérateur</label><input value={nomOperateur} onChange={(e) => setNomOperateur(e.target.value)} className={inputClass} /></div><div><label className={labelClass}>Numéro de l'opérateur</label><input value={numeroOperateur} onChange={(e) => setNumeroOperateur(e.target.value)} className={inputClass} /></div><div><label className={labelClass}>Bénéficiaire</label><input value={beneficiaire} onChange={(e) => setBeneficiaire(e.target.value)} className={inputClass} /></div><div><label className={labelClass}>Numéro du bénéficiaire</label><input value={numeroBeneficiaire} onChange={(e) => setNumeroBeneficiaire(e.target.value)} className={inputClass} /></div><div className="sm:col-span-2"><label className={labelClass}>Mot de passe de confirmation</label><input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} /></div></>}</div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">{error}</div>}<div className="mt-5 flex gap-3"><button type="button" onClick={closeEditor} className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 font-semibold">Annuler</button><button type="submit" disabled={saving} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving ? 'Enregistrement...' : 'Enregistrer et télécharger le reçu'}</button></div></form></div>}
   </div>;
 }
