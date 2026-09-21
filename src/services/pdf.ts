@@ -1,171 +1,218 @@
-import { useState } from 'react';
-import { ArrowLeft, Save, X, Calendar, Tag, DollarSign, FileText, User, CheckCircle2 } from 'lucide-react';
-import type { Config, Categorie, Devise } from '@/types';
-import { CULTE_OPTIONS } from '@/types';
-import { useFinance } from '@/hooks/useFinance';
-import { todayISO, formatDual } from '@/utils/format';
-import { generateRecuEntree } from '@/services/pdf';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { formatCdf, formatUsd, formatDate, formatDateShort } from '@/utils/format';
+import type { Config, EntreeWithCategorie, Reversement, Sortie } from '@/types';
 
-interface EntryFormProps {
-  config: Config;
-  categories: Categorie[];
-  onBack: () => void;
+function header(doc: jsPDF, config: Config, subtitle: string): void {
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(config.nom_communaute, 105, 18, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(config.paroisse, 105, 25, { align: 'center' });
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(subtitle, 105, 34, { align: 'center' });
+  doc.setLineWidth(0.5);
+  doc.line(14, 38, 196, 38);
 }
 
-export function EntryForm({ config, categories, onBack }: EntryFormProps) {
-  const { addEntree } = useFinance();
-  const [date, setDate] = useState(todayISO());
-  const [culte, setCulte] = useState<string>(CULTE_OPTIONS[0]);
-  const [categorieId, setCategorieId] = useState<number>(categories[0]?.id || 0);
-  const [beneficiaire, setBeneficiaire] = useState('');
-  const [numeroBeneficiaire, setNumeroBeneficiaire] = useState('');
-  const [devise, setDevise] = useState<Devise>('CDF');
-  const [montant, setMontant] = useState('');
-  const [note, setNote] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function footer(doc: jsPDF): void {
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Édité le ${formatDate(new Date())} - Page ${page}/${pageCount}`, 105, 290, { align: 'center' });
+    doc.text('Approuvé par le pasteur Kameya Kaboyi Josué', 105, 296, { align: 'center' });
+  }
+}
 
-  const computeAmounts = () => {
-    const m = parseInt(montant, 10) || 0;
-    if (devise === 'CDF') return { montant_cdf: m, montant_usd: 0 };
-    return { montant_cdf: 0, montant_usd: m };
-  };
+function receipt(
+  doc: jsPDF,
+  config: Config,
+  title: string,
+  rows: [string, string][],
+  color: [number, number, number],
+  filename: string,
+): void {
+  header(doc, config, title);
+  autoTable(doc, {
+    startY: 50,
+    head: [['Champ', 'Valeur']],
+    body: rows,
+    theme: 'striped',
+    headStyles: { fillColor: color, fontSize: 10 },
+    bodyStyles: { fontSize: 9 },
+    margin: { left: 14, right: 14 },
+  });
+  footer(doc);
+  doc.save(filename);
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const montantNum = parseInt(montant, 10);
-    if (!montantNum || montantNum <= 0) {
-      setError('Veuillez entrer un montant valide');
-      return;
-    }
-    const { montant_cdf, montant_usd } = computeAmounts();
-    const result = await addEntree({
-      date,
-      culte,
-      categorie_id: categorieId,
-      beneficiaire: beneficiaire.trim() || null,
-      numero_beneficiaire: numeroBeneficiaire.trim() || null,
-      devise,
-      montant: montantNum,
-      montant_cdf,
-      montant_usd,
-      note: note || null,
+export function generateRecuEntree(config: Config, entree: EntreeWithCategorie, categorieNom: string): void {
+  const doc = new jsPDF();
+  receipt(doc, config, "REÇU D'ENTRÉE", [
+    ['N° Reçu', `ENT-${entree.id.toString().padStart(6, '0')}`],
+    ['Date', formatDateShort(entree.date)],
+    ['Culte / Service', entree.culte],
+    ['Catégorie', categorieNom],
+    ['Bénéficiaire', entree.beneficiaire || '—'],
+    ['N° Bénéficiaire', entree.numero_beneficiaire || '—'],
+    ['Caisse', entree.devise],
+    ['Montant', entree.devise === 'CDF' ? formatCdf(entree.montant_cdf) : formatUsd(entree.montant_usd)],
+    ['Note', entree.note || '—'],
+  ], [22, 101, 52], `recu_entree_${entree.id}.pdf`);
+}
+
+export function generateRecuSortie(config: Config, sortie: Sortie): void {
+  const doc = new jsPDF();
+  receipt(doc, config, 'REÇU DE SORTIE', [
+    ['N° Reçu', `SORT-${sortie.id.toString().padStart(6, '0')}`],
+    ['Date', formatDateShort(sortie.date)],
+    ['Nature du décaissement', sortie.nature],
+    ['Caisse', sortie.devise],
+    ['Montant', sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd)],
+    ['Description', sortie.description || '—'],
+    ['Opérateur', sortie.nom_operateur],
+    ['Téléphone', sortie.telephone_operateur],
+  ], [185, 28, 28], `recu_sortie_${sortie.id}.pdf`);
+}
+
+export function generateRecuReversement(config: Config, reversement: Reversement, label: string): void {
+  const doc = new jsPDF();
+  const rows: [string, string][] = [
+    ['N° Reçu', `REV-${reversement.id.toString().padStart(6, '0')}`],
+    ['Type', label],
+    ['Date', formatDateShort(reversement.date_reversement)],
+  ];
+  if (reversement.montant_cdf > 0) rows.push(['Caisse CDF', formatCdf(reversement.montant_cdf)]);
+  if (reversement.montant_usd > 0) rows.push(['Caisse USD', formatUsd(reversement.montant_usd)]);
+  rows.push(['Période', reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—']);
+  receipt(doc, config, 'REÇU DE REVERSEMENT', rows, [180, 83, 9], `recu_reversement_${reversement.id}.pdf`);
+}
+
+interface ReportData {
+  title: string;
+  periodeLabel: string;
+  year: number;
+  entrees: EntreeWithCategorie[];
+  sorties: Sortie[];
+  reversements: Reversement[];
+  totalEntreesCdf: number;
+  totalEntreesUsd: number;
+  totalSortiesCdf: number;
+  totalSortiesUsd: number;
+  totalReversementsCdf: number;
+  totalReversementsUsd: number;
+  soldeCdf?: number;
+  soldeUsd?: number;
+}
+
+export function generateReport(config: Config, data: ReportData): void {
+  const doc = new jsPDF({ orientation: 'landscape' });
+  header(doc, config, data.title);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'italic');
+  doc.text(`Période: ${data.periodeLabel}`, 148, 44, { align: 'center' });
+  doc.text(`Année: ${data.year}`, 148, 49, { align: 'center' });
+
+  let y = 56;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ENTRÉES', 14, y);
+  y += 4;
+  autoTable(doc, {
+    startY: y,
+    head: [['Date', 'Culte', 'Catégorie', 'Bénéficiaire', 'N° Bénéficiaire', 'Caisse', 'Montant', 'Note']],
+    body: data.entrees.map((entry) => [
+      formatDateShort(entry.date), entry.culte, entry.categorie_nom || '—', entry.beneficiaire || '—',
+      entry.numero_beneficiaire || '—', entry.devise,
+      entry.devise === 'CDF' ? formatCdf(entry.montant_cdf) : formatUsd(entry.montant_usd), entry.note || '—',
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [22, 101, 52], fontSize: 8 },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+
+  doc.setFontSize(10);
+  doc.text('RÉSUMÉ PAR CATÉGORIE', 14, y);
+  y += 4;
+  const categoryTotals = new Map<string, { cdf: number; usd: number }>();
+  for (const entry of data.entrees) {
+    const current = categoryTotals.get(entry.categorie_nom || '—') || { cdf: 0, usd: 0 };
+    categoryTotals.set(entry.categorie_nom || '—', { cdf: current.cdf + entry.montant_cdf, usd: current.usd + entry.montant_usd });
+  }
+  autoTable(doc, {
+    startY: y,
+    head: [['Catégorie', 'Caisse CDF', 'Caisse USD']],
+    body: Array.from(categoryTotals.entries()).map(([name, totals]) => [name, formatCdf(totals.cdf), formatUsd(totals.usd)]),
+    theme: 'striped',
+    headStyles: { fillColor: [22, 101, 52], fontSize: 8 },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+
+  doc.setFontSize(11);
+  doc.text('SORTIES', 14, y);
+  y += 4;
+  autoTable(doc, {
+    startY: y,
+    head: [['Date', 'Nature', 'Caisse', 'Montant', 'Description', 'Opérateur']],
+    body: data.sorties.map((sortie) => [
+      formatDateShort(sortie.date), sortie.nature, sortie.devise,
+      sortie.devise === 'CDF' ? formatCdf(sortie.montant_cdf) : formatUsd(sortie.montant_usd),
+      sortie.description || '—', `${sortie.nom_operateur} (${sortie.telephone_operateur})`,
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [185, 28, 28], fontSize: 8 },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+
+  if (data.reversements.length > 0) {
+    doc.setFontSize(11);
+    doc.text('REVERSEMENTS', 14, y);
+    y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [['Date', 'Type', 'Caisse CDF', 'Caisse USD', 'Période']],
+      body: data.reversements.map((reversement) => [
+        formatDateShort(reversement.date_reversement),
+        reversement.type === 'communaute_centrale' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)',
+        formatCdf(reversement.montant_cdf), formatUsd(reversement.montant_usd),
+        reversement.periode_debut && reversement.periode_fin ? `${formatDateShort(reversement.periode_debut)} - ${formatDateShort(reversement.periode_fin)}` : '—',
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [180, 83, 9], fontSize: 8 },
+      bodyStyles: { fontSize: 7 },
+      margin: { left: 14, right: 14 },
     });
-    if (result) {
-      const catNom = categories.find((c) => c.id === categorieId)?.nom || '';
-      generateRecuEntree(config, result, catNom);
-      setSuccess(true);
-      setTimeout(() => onBack(), 1800);
-    } else {
-      setError("Erreur lors de l'enregistrement");
-    }
-  };
-
-  if (success) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center animate-[fadeIn_0.3s_ease]">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-100 mb-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-800">Entrée enregistrée</h3>
-          <p className="text-gray-500 mt-1">Le reçu PDF a été téléchargé avec succès</p>
-        </div>
-      </div>
-    );
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
   }
 
-  return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </button>
-        <h1 className="text-2xl font-bold text-gray-800">Enregistrer une Entrée</h1>
-      </div>
+  doc.setFontSize(11);
+  doc.text('SYNTHÈSE', 14, y);
+  y += 4;
+  autoTable(doc, {
+    startY: y,
+    head: [['Indicateur', 'Caisse CDF', 'Caisse USD']],
+    body: [
+      ['Total Entrées', formatCdf(data.totalEntreesCdf), formatUsd(data.totalEntreesUsd)],
+      ['Total Sorties', formatCdf(data.totalSortiesCdf), formatUsd(data.totalSortiesUsd)],
+      ['Total Reversements', formatCdf(data.totalReversementsCdf), formatUsd(data.totalReversementsUsd)],
+      ['Solde Net en Caisse', formatCdf(data.soldeCdf ?? data.totalEntreesCdf - data.totalSortiesCdf - data.totalReversementsCdf), formatUsd(data.soldeUsd ?? data.totalEntreesUsd - data.totalSortiesUsd - data.totalReversementsUsd)],
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [30, 58, 95], fontSize: 8 },
+    bodyStyles: { fontSize: 8 },
+    margin: { left: 14, right: 14 },
+  });
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <Calendar className="w-4 h-4 text-emerald-600" /> Date
-          </label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <Tag className="w-4 h-4 text-emerald-600" /> Culte / Service
-          </label>
-          <select value={culte} onChange={(e) => setCulte(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
-            {CULTE_OPTIONS.map((c) => (<option key={c} value={c}>{c}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <Tag className="w-4 h-4 text-emerald-600" /> Nature de la recette
-          </label>
-          <select value={categorieId} onChange={(e) => setCategorieId(parseInt(e.target.value, 10))} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
-            {categories.map((c) => (<option key={c.id} value={c.id}>{c.nom}</option>))}
-          </select>
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <User className="w-4 h-4 text-emerald-600" /> Bénéficiaire
-          </label>
-          <input type="text" value={beneficiaire} onChange={(e) => setBeneficiaire(e.target.value)} placeholder="Nom du bénéficiaire" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <FileText className="w-4 h-4 text-emerald-600" /> N° Bénéficiaire
-          </label>
-          <input type="text" value={numeroBeneficiaire} onChange={(e) => setNumeroBeneficiaire(e.target.value)} placeholder="Numéro du bénéficiaire" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <DollarSign className="w-4 h-4 text-emerald-600" /> Devise
-          </label>
-          <div className="flex gap-3">
-            <button type="button" onClick={() => setDevise('CDF')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'CDF' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
-              Franc Congolais (CDF)
-            </button>
-            <button type="button" onClick={() => setDevise('USD')} className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all border ${devise === 'USD' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
-              Dollar Américain (USD)
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <DollarSign className="w-4 h-4 text-emerald-600" /> Montant ({devise})
-          </label>
-          <input type="number" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder="0" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-lg font-semibold" />
-          {montant && parseInt(montant, 10) > 0 && (
-            <p className="text-sm text-emerald-600 mt-1 font-medium">{formatDual(...Object.values(computeAmounts()) as [number, number])}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <FileText className="w-4 h-4 text-emerald-600" /> Note (optionnel)
-          </label>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none" placeholder="Note libre..." />
-        </div>
-
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>}
-
-        <div className="flex gap-3 pt-2">
-          <button type="submit" className="flex-1 py-3 px-6 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2">
-            <Save className="w-5 h-5" /> Enregistrer
-          </button>
-          <button type="button" onClick={onBack} className="flex-1 py-3 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all flex items-center justify-center gap-2">
-            <X className="w-5 h-5" /> Annuler
-          </button>
-        </div>
-      </form>
-    </div>
-  );
+  footer(doc);
+  doc.save(`rapport_${data.title.replace(/\s/g, '_').toLowerCase()}.pdf`);
 }
