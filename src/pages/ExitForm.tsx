@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, CheckCircle2, LockKeyhole, Save, X } from 'lucide-react';
 import type { Config, Devise } from '@/types';
 import { useFinance } from '@/hooks/useFinance';
+import { queryOne } from '@/lib/database';
 import { todayISO } from '@/utils/format';
 import { generateRecuSortie } from '@/services/pdf';
 
@@ -19,7 +20,6 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
   const [description, setDescription] = useState('');
   const [nomOperateur, setNomOperateur] = useState('');
   const [numeroOperateur, setNumeroOperateur] = useState('');
-  const [telephoneOperateur, setTelephoneOperateur] = useState('');
   const [beneficiaire, setBeneficiaire] = useState('');
   const [numeroBeneficiaire, setNumeroBeneficiaire] = useState('');
   const [password, setPassword] = useState('');
@@ -29,14 +29,50 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (password !== config.mdp_sortie) { setError('Mot de passe de confirmation incorrect'); return; }
     const value = Number(montant);
-    if (!value || value <= 0 || !nature.trim() || !nomOperateur.trim() || !numeroOperateur.trim() || !telephoneOperateur.trim() || !beneficiaire.trim() || !numeroBeneficiaire.trim()) {
+    if (!value || value <= 0 || !nature.trim() || !nomOperateur.trim() || !numeroOperateur.trim() || !beneficiaire.trim() || !numeroBeneficiaire.trim()) {
       setError('Veuillez remplir tous les champs obligatoires et entrer un montant valide');
       return;
     }
+    if (password !== config.mdp_sortie) {
+      setError('Mot de passe de confirmation incorrect');
+      return;
+    }
+
+    const balance = await queryOne<{ solde: number }>(
+      `SELECT
+        COALESCE((SELECT SUM(montant_cdf) FROM entrees), 0)
+        - COALESCE((SELECT SUM(montant_cdf) FROM sorties), 0)
+        - COALESCE((SELECT SUM(montant_cdf) FROM reversements), 0) AS solde
+       WHERE ? = 'CDF'
+       UNION ALL
+       SELECT
+        COALESCE((SELECT SUM(montant_usd) FROM entrees), 0)
+        - COALESCE((SELECT SUM(montant_usd) FROM sorties), 0)
+        - COALESCE((SELECT SUM(montant_usd) FROM reversements), 0) AS solde
+       WHERE ? = 'USD'`,
+      [devise, devise],
+    );
+
+    if ((balance?.solde ?? 0) < value) {
+      setError('Opération refusée : solde insuffisant. Veuillez réessayer plus tard.');
+      return;
+    }
+
     const amounts = devise === 'CDF' ? { montant_cdf: value, montant_usd: 0 } : { montant_cdf: 0, montant_usd: value };
-    const result = await addSortie({ date, nature: nature.trim(), devise, montant: value, ...amounts, description: description.trim() || null, nom_operateur: nomOperateur.trim(), numero_operateur: numeroOperateur.trim(), telephone_operateur: telephoneOperateur.trim(), beneficiaire: beneficiaire.trim(), numero_beneficiaire: numeroBeneficiaire.trim() });
+    const result = await addSortie({
+      date,
+      nature: nature.trim(),
+      devise,
+      montant: value,
+      ...amounts,
+      description: description.trim() || null,
+      nom_operateur: nomOperateur.trim(),
+      numero_operateur: numeroOperateur.trim(),
+      telephone_operateur: '',
+      beneficiaire: beneficiaire.trim(),
+      numero_beneficiaire: numeroBeneficiaire.trim(),
+    });
     if (!result) { setError("Erreur lors de l'enregistrement"); return; }
     generateRecuSortie(config, result);
     setSuccess(true);
@@ -54,7 +90,7 @@ export function ExitForm({ config, onBack }: ExitFormProps) {
         <div><label className={labelClass}>Devise</label><div className="grid grid-cols-2 gap-2">{(['CDF', 'USD'] as Devise[]).map((currency) => <button key={currency} type="button" onClick={() => setDevise(currency)} className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${devise === currency ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}>{currency}</button>)}</div></div>
         <div><label className={labelClass} htmlFor="exit-amount">Montant ({devise})</label><input id="exit-amount" type="number" min="0" step="0.01" value={montant} onChange={(event) => setMontant(event.target.value)} placeholder="0,00" className={fieldClass} /></div>
         <div className="sm:col-span-2"><label className={labelClass} htmlFor="exit-description">Description <span className="font-normal text-gray-400">(facultatif)</span></label><textarea id="exit-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Décrire la dépense..." className={`${fieldClass} resize-none`} /></div>
-        <div className="sm:col-span-2 border-t border-gray-100 pt-5"><h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">Informations de l'opérateur</h2><div className="grid grid-cols-1 gap-5 md:grid-cols-2"><div><label className={labelClass} htmlFor="operator-name">Nom de l'opérateur</label><input id="operator-name" value={nomOperateur} onChange={(event) => setNomOperateur(event.target.value)} className={fieldClass} /></div><div><label className={labelClass} htmlFor="operator-number">Numéro de l'opérateur</label><input id="operator-number" value={numeroOperateur} onChange={(event) => setNumeroOperateur(event.target.value)} className={fieldClass} /></div><div><label className={labelClass} htmlFor="operator-phone">Téléphone</label><input id="operator-phone" type="tel" value={telephoneOperateur} onChange={(event) => setTelephoneOperateur(event.target.value)} className={fieldClass} /></div></div></div>
+        <div className="sm:col-span-2 border-t border-gray-100 pt-5"><h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">Informations de l'opérateur</h2><div className="grid grid-cols-1 gap-5 md:grid-cols-2"><div><label className={labelClass} htmlFor="operator-name">Nom de l'opérateur</label><input id="operator-name" value={nomOperateur} onChange={(event) => setNomOperateur(event.target.value)} className={fieldClass} /></div><div><label className={labelClass} htmlFor="operator-number">Numéro de l'opérateur</label><input id="operator-number" value={numeroOperateur} onChange={(event) => setNumeroOperateur(event.target.value)} className={fieldClass} /></div></div></div>
         <div className="sm:col-span-2 border-t border-gray-100 pt-5"><h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">Informations du bénéficiaire</h2><div className="grid grid-cols-1 gap-5 md:grid-cols-2"><div><label className={labelClass} htmlFor="beneficiary-name">Nom du bénéficiaire</label><input id="beneficiary-name" value={beneficiaire} onChange={(event) => setBeneficiaire(event.target.value)} className={fieldClass} /></div><div><label className={labelClass} htmlFor="beneficiary-number">Numéro du bénéficiaire</label><input id="beneficiary-number" value={numeroBeneficiaire} onChange={(event) => setNumeroBeneficiaire(event.target.value)} className={fieldClass} /></div></div></div>
         <div className="sm:col-span-2"><label className={labelClass} htmlFor="exit-password">Mot de passe de confirmation</label><div className="relative"><LockKeyhole className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-gray-400" /><input id="exit-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} className={`${fieldClass} pl-9`} /></div></div>
       </div>
