@@ -51,16 +51,19 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
       setTotalApotreCdf(apotreDisponibleCdf); setTotalApotreUsd(apotreDisponibleUsd);
 
       setEntreesMoisCdf(monthlyEntreesCdf[month]); setEntreesMoisUsd(monthlyEntreesUsd[month]); setEntreesMoisPrecCdf(monthlyEntreesCdf[month === 0 ? 11 : month - 1]); setSortiesMoisCdf(monthlySortiesCdf[month]); setSortiesMoisUsd(monthlySortiesUsd[month]);
+
       const totalAllEntreesCdf = entrees.reduce((s, e) => s + e.montant_cdf, 0); const totalAllEntreesUsd = entrees.reduce((s, e) => s + e.montant_usd, 0);
       const totalSortiesCdf = monthlySortiesCdf.reduce((s, v) => s + v, 0); const totalSortiesUsd = monthlySortiesUsd.reduce((s, v) => s + v, 0);
-      const totalReversementsPayesCdf = monthlyReversementsCdf.reduce((s, v) => s + v, 0); const totalReversementsPayesUsd = monthlyReversementsUsd.reduce((s, v) => s + v, 0);
-      setSoldeNetCdf(totalAllEntreesCdf - totalSortiesCdf - totalReversementsPayesCdf - communauteDisponibleCdf - apotreDisponibleCdf);
-      setSoldeNetUsd(totalAllEntreesUsd - totalSortiesUsd - totalReversementsPayesUsd - communauteDisponibleUsd - apotreDisponibleUsd);
+      const soldeNetCdf = totalAllEntreesCdf - totalSortiesCdf - communauteDisponibleCdf - apotreDisponibleCdf;
+      const soldeNetUsd = totalAllEntreesUsd - totalSortiesUsd - communauteDisponibleUsd - apotreDisponibleUsd;
+      setSoldeNetCdf(soldeNetCdf); setSoldeNetUsd(soldeNetUsd);
+
       setChartDataCdf(MONTH_NAMES_SHORT.map((mois, i) => ({ mois, entrees: monthlyEntreesCdf[i], sorties: monthlySortiesCdf[i] + monthlyReversementsCdf[i] }))); setChartDataUsd(MONTH_NAMES_SHORT.map((mois, i) => ({ mois, entrees: monthlyEntreesUsd[i], sorties: monthlySortiesUsd[i] + monthlyReversementsUsd[i] })));
       setPieDataCdf(catTotals.filter((c) => c.montant_cdf > 0).map((c) => ({ name: c.nom, value: c.montant_cdf }))); setPieDataUsd(catTotals.filter((c) => c.montant_usd > 0).map((c) => ({ name: c.nom, value: c.montant_usd })));
     } catch { setError('Erreur lors du chargement des données'); }
     setLoading(false);
   }, [categories, getMonthlyTotals]);
+
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const handleReversement = async (type: 'communaute' | 'apotre') => {
@@ -70,8 +73,19 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
     if (montantCdf <= 0 && montantUsd <= 0) { setError('Montant à reverser est nul'); setShowConfirm(null); return; }
     const { start, end } = getYearRange(today.getFullYear()); const revType = type === 'communaute' ? 'communaute_centrale' : 'apotre';
     const result = await addReversement({ type: revType as Reversement['type'], montant_cdf: montantCdf, montant_usd: montantUsd, date_reversement: today.toISOString().split('T')[0], periode_debut: start, periode_fin: end });
-    if (result) { const label = type === 'communaute' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)'; generateRecuReversement(config, result, label); setSuccessMsg(`Reversement de ${formatDual(montantCdf, montantUsd)} enregistré. Reçu PDF téléchargé avec succès.`); setShowConfirm(null); setTotalCommunauteCdf(0); setTotalCommunauteUsd(0); setTotalApotreCdf(0); setTotalApotreUsd(0); setTimeout(() => setSuccessMsg(null), 4000); await loadDashboard(); } else setError('Erreur lors du reversement');
+    if (result) {
+      const label = type === 'communaute' ? 'Communauté Centrale (20%)' : 'Apôtre (10%)';
+      generateRecuReversement(config, result, label);
+      setSuccessMsg(`Reversement de ${formatDual(montantCdf, montantUsd)} enregistré. Reçu PDF téléchargé avec succès.`);
+      setShowConfirm(null);
+      setTotalCommunauteCdf(0); setTotalCommunauteUsd(0); setTotalApotreCdf(0); setTotalApotreUsd(0);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      await loadDashboard();
+    } else {
+      setError('Erreur lors du reversement');
+    }
   };
+
   const variation = entreesMoisPrecCdf > 0 ? ((entreesMoisCdf - entreesMoisPrecCdf) / entreesMoisPrecCdf) * 100 : 0;
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600" /></div>;
 
@@ -79,7 +93,7 @@ export function Dashboard({ config, categories, onNavigate }: DashboardProps) {
     {successMsg && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /><span className="text-sm font-medium">{successMsg}</span></div>}
     {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2"><AlertTriangle className="w-5 h-5" /><span className="text-sm">{error}</span></div>}
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"><div className="flex items-center justify-between mb-3"><div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>{entreesMoisPrecCdf > 0 && <span className={`text-xs font-semibold px-2 py-1 rounded-full ${variation >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{variation >= 0 ? '+' : ''}{variation.toFixed(1)}%</span>}</div><p className="text-sm text-gray-500">Entrées du mois</p><p className="text-sm font-bold text-gray-800 mt-1">{formatDual(entreesMoisCdf, entreesMoisUsd)}</p></div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"><div className="flex items-center justify-between mb-3"><div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>{entreesMoisPrecCdf > 0 && <span className={`text-xs font-semibold px-2 py-1 rounded-full ${variation >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{variation >= 0 ? '+' : ''}{variation.toFixed(1)}%</span>}</div><p className="text-sm text-gray-500">Entr��es du mois</p><p className="text-sm font-bold text-gray-800 mt-1">{formatDual(entreesMoisCdf, entreesMoisUsd)}</p></div>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"><div className="flex items-center justify-between mb-3"><div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center"><TrendingDown className="w-5 h-5 text-red-600" /></div></div><p className="text-sm text-gray-500">Sorties du mois</p><p className="text-sm font-bold text-gray-800 mt-1">{formatDual(sortiesMoisCdf, sortiesMoisUsd)}</p></div>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"><div className="flex items-center justify-between mb-3"><div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center"><Wallet className="w-5 h-5 text-blue-600" /></div></div><p className="text-sm text-gray-500">Solde net en caisse</p><p className="text-sm font-bold text-gray-800 mt-1">{formatDual(soldeNetCdf, soldeNetUsd)}</p></div>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"><div className="flex items-center justify-between mb-3"><div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center"><Wallet className="w-5 h-5 text-amber-600" /></div></div><p className="text-sm text-gray-500">Total global des entrées</p><p className="text-sm font-bold text-gray-800 mt-1">{formatDual(totalGlobalCdf, totalGlobalUsd)}</p></div>
