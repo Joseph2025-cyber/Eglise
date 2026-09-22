@@ -8,7 +8,14 @@ interface ReportsPageProps { config: Config; onBack: () => void; }
 type ReportRange = 'day' | 'week' | 'month' | 'quarter' | 'year';
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-function getWeekRange(date: string) { const selected = new Date(`${date}T00:00:00`); const day = selected.getDay(); selected.setDate(selected.getDate() - day + (day === 0 ? -6 : 1)); const end = new Date(selected); end.setDate(selected.getDate() + 6); return { start: selected.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) }; }
+function getWeekRange(date: string) {
+  const selected = new Date(`${date}T00:00:00`);
+  const day = selected.getDay();
+  selected.setDate(selected.getDate() - day + (day === 0 ? -6 : 1));
+  const start = selected.toISOString().slice(0, 10);
+  selected.setDate(selected.getDate() + 6);
+  return { start, end: selected.toISOString().slice(0, 10) };
+}
 function getMonthRange(year: number, month: number) { return { start: `${year}-${String(month + 1).padStart(2, '0')}-01`, end: new Date(year, month + 1, 0).toISOString().slice(0, 10) }; }
 function getQuarterRange(year: number, quarter: number) { const startMonth = (quarter - 1) * 3; return { start: `${year}-${String(startMonth + 1).padStart(2, '0')}-01`, end: new Date(year, startMonth + 3, 0).toISOString().slice(0, 10) }; }
 function getYearRange(year: number) { return { start: `${year}-01-01`, end: `${year}-12-31` }; }
@@ -41,7 +48,7 @@ export function ReportsPage({ config, onBack }: ReportsPageProps) {
       const totalReversementsUsd = reversements.reduce((sum, item) => sum + Number(item.montant_usd || 0), 0);
       generateReport(config, { title, periodeLabel: periodLabel, year, entrees: entrees as EntreeWithCategorie[], sorties: sorties as Sortie[], reversements: reversements as Reversement[], totalEntreesCdf, totalEntreesUsd, totalSortiesCdf, totalSortiesUsd, totalReversementsCdf, totalReversementsUsd, soldeCdf: totalEntreesCdf - totalSortiesCdf - totalReversementsCdf, soldeUsd: totalEntreesUsd - totalSortiesUsd - totalReversementsUsd });
       setSuccess(true);
-      window.setTimeout(() => setSuccess(false), 3500);
+      window.setTimeout(() => setSuccess(false), 5000);
     } catch { setError('Une erreur est survenue lors de la génération du rapport.'); } finally { setLoading(false); }
   };
 
@@ -65,7 +72,7 @@ export function ReportsPage({ config, onBack }: ReportsPageProps) {
           {selectedRange === 'day' && <><label className="text-sm font-medium">Date</label><input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" /></>}
           {selectedRange === 'week' && <><label className="text-sm font-medium">Semaine</label><input type="date" value={weekDate} onChange={(event) => setWeekDate(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" /></>}
           {selectedRange === 'month' && <><label className="text-sm font-medium">Mois</label><select value={monthIndex} onChange={(event) => setMonthIndex(Number(event.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">{MONTH_NAMES.map((month, index) => <option key={month} value={index}>{month}</option>)}</select></>}
-          {selectedRange === 'quarter' && <><label className="text-sm font-medium">Trimestre</label><select value={quarterIndex} onChange={(event) => setQuarterIndex(Number(event.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value={1}>Trimestre 1</option><option value={2}>Trimestre 2</option><option value={3}>Trimestre 3</option><option value={4}>Trimestre 4</option></select></>}
+          {selectedRange === 'quarter' && <><label className="text-sm font-medium">Trimestre</label><select value={quarterIndex} onChange={(event) => setQuarterIndex(Number(event.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">{[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Trimestre {quarter}</option>)}</select></>}
           {selectedRange === 'year' && <span className="text-sm text-gray-600">Rapport complet de l'année {currentYear}</span>}
           <button type="button" disabled={loading} onClick={actions[selectedRange]} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Download className="mr-2 inline h-4 w-4" />{loading ? 'Génération...' : 'Générer le rapport'}</button>
         </div>
